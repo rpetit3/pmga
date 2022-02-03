@@ -1,9 +1,0 @@
-[DEFAULT]
-repository = /scicomp/groups/OID/NCIRD/DBD/MVPDB/ML/repository
-
-[/home/adam]
-repository = /media/scicomp_GWA/repository
-
-[DEBUG]
-repository = /home/adam/Data/test_repository/
-

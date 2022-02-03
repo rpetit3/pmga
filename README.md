@@ -1,75 +1,117 @@
-# Bacterial Meningitis Genome Analysis Platform (BMGAP)
+# PLEASE NOTE - THIS FORK IS PROVIDED AS-IS
+This fork is provided as is, I'm not the maintainer, just a bioinformatician that wanted to use 
+PMGA (PMGA - PubMLST Genome Annotator v2.0) on the command-line. Please keep that in mind if any
+issues arise. I can assist with technical issues, but I cannot help interpret the results 
+(e.g. serotype/serogroup). For help with the biological significance of the results, please 
+go upstream to [BMGAP](https://github.com/CDCgov/BMGAP). I'm sure they would be willing to help!
 
-**General disclaimer** This repository was created for use by CDC programs to collaborate on public health related projects in support of the [CDC mission](https://www.cdc.gov/about/organization/mission.htm).  GitHub is not hosted by the CDC, but is a third party website used by CDC and its partners to share information and collaborate on software. CDC use of GitHub does not imply an endorsement of any one particular service, product, or enterprise. 
+```
+mamba create -n test-pmga -c conda-forge -c bioconda 'biopython>1.77' blast 'mash=1.1' pandas 'python>=3.7' urllib3
+```
 
-## Overview
-
-BMGAP contains an analysis pipeline to identify and characterize bacterial meningitis pathogens using Illumina short-read sequencing, a database and API to store and serve analysis results, and a web-based UI to provide access to the results.
-
-The BMGAP analysis pipeline requires Python 3.6+ as well as a number of dependencies, including BLAST+, MASH, and SPAdes. Data is stored in a MongoDB database, and is served using an ExpressJS-based server. The web UI is implemented using React.
-
-The BMGAP analysis pipeline includes several purpose-built analysis tools, including BMScan, which uses MASH and a custom database to provide species identification for bacterial meningitis pathogens, LocusExtractor, which uses PubMLST references to identify MLSTs for both *Neisseria sp.* and *Haemophilus influenzae*, and PMGA, which identifies and annotates serogrouping/serotyping genes and MLST alleles.
-
-## Access to BMGAP through the OAMD Portal
-
-BMGAP can be accessed online through the OAMD Portal (amdportal-sams.cdc.gov). To request access to BMGAP, please contact the BMGAP team at Shalabh Sharma - psa8@cdc.gov to register for using the OAMD Portal. 
-
-Additional details on the account creation process can be found in the SAMS User Guide: [https://auth.cdc.gov/sams/SAMSUserGuide.pdf?disp=true]. 
+# PMGA - PubMLST Genome Annotator v2.0
 
 
+Current Species Included:
 
-## Public Domain Standard Notice
-This repository constitutes a work of the United States Government and is not
-subject to domestic copyright protection under 17 USC § 105. This repository is in
-the public domain within the United States, and copyright and related rights in
-the work worldwide are waived through the [CC0 1.0 Universal public domain dedication](https://creativecommons.org/publicdomain/zero/1.0/).
-All contributions to this repository will be released under the CC0 dedication. By
-submitting a pull request you are agreeing to comply with this waiver of
-copyright interest.
+ * All Neisseria species
+ * *Haemophilus influenzae*
 
-## License Standard Notice
-The repository utilizes code licensed under the terms of the Apache Software
-License and therefore is licensed under ASL v2 or later.
+**Dependencies**
+```
+module load Python/3.7
+module load ncbi-blast+/LATEST
+module load Mash/1.1 (if no BMScan Json provided)
+```
+How to use:
+1) Generate local PubMLST Allele Blast Databases using build_pubmlst_dbs.py script
 
-This source code in this repository is free: you can redistribute it and/or modify it under
-the terms of the Apache Software License version 2, or (at your option) any
-later version.
 
-This source code in this repository is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE. See the Apache Software License for more details.
+**Recommended usage to include prebuilt custom DBs** 
 
-You should have received a copy of the Apache Software License along with this
-program. If not, see http://www.apache.org/licenses/LICENSE-2.0.html
+```python
+python3.7 build_pubmlst_dbs.py -o pubmlst_dbs_all
+```
 
-The source code forked from other open source projects will inherit its license.
+* This usage will copy all prebuilt allele folders from the custom_allele_set directory into the pubmlst_dbs_all folder.
+* If given a previously-existing PubMLST Allele Database, the script will check for changes within each allele.
+* If changes are identified, the allele collection will be updated, if not, it will move on to the next allele set. 
 
-## Privacy Standard Notice
-This repository contains only non-sensitive, publicly available data and
-information. All material and community participation is covered by the
-[Disclaimer](https://github.com/CDCgov/template/blob/master/DISCLAIMER.md)
-and [Code of Conduct](https://github.com/CDCgov/template/blob/master/code-of-conduct.md).
-For more information about CDC's privacy policy, please visit [http://www.cdc.gov/other/privacy.html](https://www.cdc.gov/other/privacy.html).
 
-## Contributing Standard Notice
-Anyone is encouraged to contribute to the repository by [forking](https://help.github.com/articles/fork-a-repo)
-and submitting a pull request. (If you are new to GitHub, you might start with a
-[basic tutorial](https://help.github.com/articles/set-up-git).) By contributing
-to this project, you grant a world-wide, royalty-free, perpetual, irrevocable,
-non-exclusive, transferable license to all users under the terms of the
-[Apache Software License v2](http://www.apache.org/licenses/LICENSE-2.0.html) or
-later.
+2) Annotate Genomes using blast_pubmlst.py script
+```python
+usage: blast_pubmlst.py [-h] -d INDIR [-b BLASTDIR] [-c CHAR] [-sg] [-pr]
+                           [-fa] [-fr] -o OUT [-j JDEBUG] [-jf FDEBUG]
+                           [-s SPECIES] [-t THREADS]
+Version 2.0 - Script for annotating genomes using PubMLST allele set
+optional arguments:
+  -h, --help            show this help message and exit
+  -d INDIR, --indir INDIR
+                        Input Dir
+  -b BLASTDIR, --blastdir BLASTDIR
+                        Directory containing blast DBs
+                        *Will default to "pubmlst_dbs_all"
+  -c CHAR, --char CHAR  Characterizations File
+  -sg, --serogroup      Produce SG prediction file
+  -pr, --promoters      Identify Promoters (*Experimental*)
+  -fa, --fastas         Output identified gene sequences as FASTAs
+  -fr, --force          Force overwrite existing output file
+  -o OUT, --out OUT     Output Directory
+  -j JDEBUG, --jdebug JDEBUG
+                        Skip step 1 by providing existing JSON folder with raw blast results
+  -jf FDEBUG, --fdebug FDEBUG
+                        Skip step 2 by providing existing JSON folder with final results
+  -s SPECIES, --species SPECIES
+                        BMScan Json input to skip running BMScan again
+  -t THREADS, --threads THREADS
+                        Number of Threads to use (default=1)
+```
 
-All comments, messages, pull requests, and other submissions received through
-CDC including this GitHub page may be subject to applicable federal law, including but not limited to the Federal Records Act, and may be archived. Learn more at [http://www.cdc.gov/other/privacy.html](http://www.cdc.gov/other/privacy.html).
+### Output Files
+* The output directory will consist of the following:
 
-## Records Management Standard Notice
-This repository is not a source of government records, but is a copy to increase
-collaboration and collaborative potential. All government records will be
-published through the [CDC web site](http://www.cdc.gov).
+1) **JSON** - contains 2 JSON files per assembly: "raw" contains the unfiltered BLAST results, and "final" contains the filtered, final blast results
 
-## Additional Standard Notices
-Please refer to [CDC's Template Repository](https://github.com/CDCgov/template)
-for more information about [contributing to this repository](https://github.com/CDCgov/template/blob/master/CONTRIBUTING.md),
-[public domain notices and disclaimers](https://github.com/CDCgov/template/blob/master/DISCLAIMER.md),
-and [code of conduct](https://github.com/CDCgov/template/blob/master/code-of-conduct.md).
+2) **GFF** - contains 1 GFF file per assembly: contains same information as found in the final JSON in GFF format
+
+3) **Serogroup** - contains serogroup predictions if "-sg" flag was provided
+
+4) **Feature_fastas** - contains fasta files per feature if "-fa" flag was provided
+
+5) **Summary** - contains group comparison summary files if "-c" flag was provided
+
+
+### PMGA Modules
+
+#### 1) Serogroup Prediction
+* This module can be accessed through the "-sg" flag.
+* It currently only works on *Neisseria* species, and is designed for *Neisseria meningitidis*
+* Identifies serogroup backbone of sample, and attempts to predict expression of capsule based on identified mutations, presence of essential genes, disruption of genes by insertion elements, and more
+
+#### 2) Group Comparison
+* This module can be accessed through the "-c" flag
+* The input is a tab-delimited file containing the name of the file and the group, for example:
+```
+my_file_1.fasta	group_1
+my_file_2.fasta	group_1
+my_file_3.fasta	group_1
+my_file_4.fasta	group_2
+my_file_5.fasta	group_2
+my_file_6.fasta	group_2
+```
+* Output will consist of:
+1) Frequency of presence of each gene per group
+2) Frequency of each allele identified per group
+3) Frequency of each non-functional (ie. internal stop) allele identified per group
+* These will be found in the "summary" folder
+
+#### 3) Fasta Output
+
+* This module can be accessed through the "-fa" flag
+* It will generate fasta files per assembly  containing all features identified, such as CDS (coding regions), IGR (intergenic regions and non-coding regions), PRO (promoters) and more
+
+### Additional Information
+
+* db contains SQlite3 DB with functional annotation information for each gene.
+* These were obtained via InterProScan
+* These currently exist only for Neisseria alleles - currently working on annotating *Haemophilus influenzae* alleles
