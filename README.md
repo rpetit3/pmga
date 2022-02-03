@@ -1,12 +1,15 @@
 # PLEASE NOTE - THIS FORK IS PROVIDED AS-IS
 This fork is provided as is, I'm not the maintainer, just a bioinformatician that wanted to use 
-PMGA (PMGA - PubMLST Genome Annotator v2.0) on the command-line. Please keep that in mind if any
-issues arise. I can assist with technical issues, but I cannot help interpret the results 
-(e.g. serotype/serogroup). For help with the biological significance of the results, please 
-go upstream to [BMGAP](https://github.com/CDCgov/BMGAP). I'm sure they would be willing to help!
+[PMGA (PubMLST Genome Annotator v2.0)](https://github.com/CDCgov/BMGAP/tree/master/pipeline/PMGA)
+on the command-line. Please keep that in mind if any issues arise. I can assist with technical issues,
+but I cannot help interpret the results (e.g. serotype/serogroup). For help with the biological
+significance of the results, please go upstream to [BMGAP](https://github.com/CDCgov/BMGAP). 
+I'm sure they would be willing to help!
 
 ```
-mamba create -n test-pmga -c conda-forge -c bioconda 'biopython>1.77' blast executor 'mash=1.1' pandas 'python>=3.7' requests
+# Temporary Environment
+mamba create -n test-pmga -c conda-forge -c bioconda \
+    'biopython>1.77' blast executor 'mash=1.1' pandas 'python>=3.7' requests
 ```
 
 # PMGA - PubMLST Genome Annotator v2.0

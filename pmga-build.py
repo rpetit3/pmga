@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-### Import Modules ###
+"""
+usage: pmga-build [-h] [--outdir STR] [--force] [--silent] [--debug] [--version]
+
+pmga-build (v0.0.1) - Script for creating local BlastDBs from PubMLST alleles
+
+optional arguments:
+  -h, --help    show this help message and exit
+  --outdir STR  Directory to save BLAST databases to
+  --force       Overwrite existing directories.
+  --silent      Only critical errors will be printed.
+  --debug       Print debug related text.
+  --version     show program's version number and exit
+"""
 import logging
 import os
 import sys
@@ -12,10 +24,10 @@ STDERR = 12
 logging.addLevelName(STDOUT, "STDOUT")
 logging.addLevelName(STDERR, "STDERR")
 
-# Not sure why these are skipped, from original
+# Not sure why these are skipped, should look into if more can be skipped considering >5000 loci are downloaded
 SKIP_ALLELES = [
-    "HAEM1147","HAEM1148","HAEM1149","HAEM1150","HAEM1151","HAEM1152","HAEM1153","HAEM1154","HAEM1155","HAEM1156",
-    "HAEM1157","HAEM1158","HAEM1159","HAEM1160","HAEM1161","HAEM1162","HAEM1163","HAEM1164"
+    "HAEM1147", "HAEM1148", "HAEM1149", "HAEM1150", "HAEM1151", "HAEM1152", "HAEM1153", "HAEM1154", "HAEM1155",
+    "HAEM1156", "HAEM1157", "HAEM1158", "HAEM1159", "HAEM1160", "HAEM1161", "HAEM1162", "HAEM1163", "HAEM1164"
 ]
 SHARED_ACROSS_SPECIES = ["NEIS2210"]
 
