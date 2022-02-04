@@ -38,6 +38,7 @@ import re
 import requests
 import sqlite3
 import sys
+import string
 import time
 from Bio import SeqIO
 from Bio.Seq import Seq
@@ -1746,6 +1747,7 @@ if __name__ == "__main__":
     import argparse as ap
     import gzip
     import json
+    from collections import OrderedDict
 
     parser = ap.ArgumentParser(
         prog=PROGRAM,
