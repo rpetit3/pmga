@@ -24,7 +24,9 @@ STDERR = 12
 logging.addLevelName(STDOUT, "STDOUT")
 logging.addLevelName(STDERR, "STDERR")
 
-# Not sure why these are skipped, should look into if more can be skipped considering >5000 loci are downloaded
+# Not sure why these are skipped
+# should look into if more can be skipped considering >5000 loci are downloaded
+# Currently takes ~90 minutes to complete the building
 SKIP_ALLELES = [
     "HAEM1147", "HAEM1148", "HAEM1149", "HAEM1150", "HAEM1151", "HAEM1152", "HAEM1153", "HAEM1154", "HAEM1155",
     "HAEM1156", "HAEM1157", "HAEM1158", "HAEM1159", "HAEM1160", "HAEM1161", "HAEM1162", "HAEM1163", "HAEM1164"
@@ -62,8 +64,28 @@ def execute(cmd, directory=os.getcwd(), capture=False, stdout_file=None, stderr_
         raise error
 
 
+def get_neisseria_schemes():
+    logging.info("Obtaining pubMLST schemes")
+    ### Obtain list of schemes and then each scheme individually from pubMLST for Neisseria sp. and load into dict ###
+    schemes = {}
+    scheme_url = "http://rest.pubmlst.org/db/pubmlst_neisseria_seqdef/schemes"
+    scheme_request_data = requests.get(scheme_url).json()
+    for scheme in scheme_request_data["schemes"]:
+        url = scheme["scheme"]
+        request_data = requests.get(url).json()
+        description = request_data["description"]
+        if "loci" in request_data:
+            schemes[description] = []
+            for loci in request_data["loci"]:
+                allele = loci.split("/")[-1]
+                schemes[description].append(allele)
+    logging.info("Schemes obtained")
+    return schemes
+
+
 if __name__ == "__main__":
     import argparse as ap
+    import json
     import requests
     from Bio import SeqIO
 
@@ -94,8 +116,8 @@ if __name__ == "__main__":
             logging.info(f"Found --force, removing existing {outdir}")
             execute(f"rm -rf {outdir}")
         else:
-            logging.info(f"Output Directory {outdir} aleady exists, please use --force to overwrite")
-            sys.exit(0)
+            logging.error(f"Output Directory {outdir} aleady exists, please use --force to overwrite")
+            sys.exit(1)
 
     # Setup initial directories
     custom_allele_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "custom_allele_sets")
@@ -145,4 +167,8 @@ if __name__ == "__main__":
                 execute(f"cp -r {allele_db_path} {allele_db_path_hi}")
 
             if i % 1000 == 0:
-                logging.debug(f"Built database for {i} of {len(request_json['loci'])} loci")
+                logging.info(f"Built database for {i} of {len(request_json['loci'])} loci")
+
+    neisseria_schemes = get_neisseria_schemes()
+    with open(f"{outdir}/neisseria_schemes.json", "wt") as json_fh:
+        json.dump(neisseria_schemes, json_fh)

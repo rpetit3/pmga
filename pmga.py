@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 ### Import Modules ###
+import logging
+import os
+import requests
 import sys
 from Bio import SeqIO
 from Bio.Seq import Seq
-import os
+
 import re
 import json
 from collections import OrderedDict
@@ -14,34 +17,33 @@ import string
 import locale
 import time
 import tempfile
-import argparse
-import urllib3
+
 import math
 import sqlite3
 from multiprocessing import Pool, Process, Queue
 from subprocess import *
 import pandas as pd
 
+PROGRAM = "pmga"
+DESCRIPTION = "Serotyping, serotyping and MLST of all Neisseria species and Haemophilus influenzae"
+VERSION = "3.0.1"
+
 ### SET UP DB connections and dictionaries ###
-encoding = locale.getdefaultlocale()[1]
-if not encoding:
-    encoding ='UTF-8'
-VERSION = "3"
-_pubmlst_server = "rest.pubmlst.org"
-SCRIPT_PATH = os.path.realpath(__file__)
-DIR_PATH = os.path.dirname(os.path.dirname(SCRIPT_PATH))
-ABS_PATH = os.path.dirname(SCRIPT_PATH)
-MASH_DB = os.path.join(ABS_PATH,"lib","species_db_v1_2.msh")
-REFSEQ_DB = os.path.join(ABS_PATH,"lib","RefSeqSketchesDefaults.msh")
-OUTPUT_DIR = ""
-http = urllib3.PoolManager()
-SQLITE_DB = os.path.join(ABS_PATH,"db","pubmlst_annotations")
-PUBMLST_DB = os.path.join(ABS_PATH,"pubmlst_dbs_all")
+SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
+MASH_DB = f"{SCRIPT_PATH}/lib/species_db_v1_2.msh"
+REFSEQ_DB = f"{SCRIPT_PATH}/lib/RefSeqSketchesDefaults.msh"
+SQLITE_DB = f"{SCRIPT_PATH}/db/pubmlst_annotations"
+PUBMLST_DB = f"{SCRIPT_PATH}/pubmlst_dbs_all"
+SPECIES_DB = f"{SCRIPT_PATH}/db/species_db_v1_2"
+
+# Do we need these open whole time?
 conn = sqlite3.connect(SQLITE_DB)
 c = conn.cursor()
-SPECIES_DB = os.path.join(ABS_PATH,"db","species_db_v1_2")
 conn_2 = sqlite3.connect(SPECIES_DB)
 c_2 = conn_2.cursor()
+
+# Copy/Paste from https://github.com/CDCgov/BMGAP/blob/master/pipeline/PMGA/blast_pubmlst.py
+# So as to not cause any changes in results
 DNA = ["A","T","C","G"]
 gene_names ={"NEIS2357":"blaTEM-1","NEIS0123":"rpoB_full","NEIS2210":"tetM","HAEM1876":"ecs1","HAEM1877":"ecs2","HAEM1878":"ecs3","HAEM1879":"ecs4","HAEM1880":"ecs5","HAEM1881":"ecs6","HAEM1882":"ecs7","HAEM1883":"ecs8","HAEM1873":"fcs1","HAEM1874":"fcs2","HAEM1875":"fcs3","HAEM1018":"acrR","HAEM1019":"acrA","HAEM1020":"acrB","HAEM0902":"rplD-L4","HAEM0906":"rplV-L22","HAEM1263":"ftsI_full","HAEM0118":"blaTEM-1","HAEM1147":"hcsB","HAEM1148":"hcsA","HAEM1149":"bcs4","HAEM1150":"bcs3","HAEM1152":"bcs1","HAEM1153":"bexD","HAEM1156":"bexA","HAEM1151":"bcs2","HAEM1154":"bexC","HAEM1155":"bexB","HAEM1157":"hcsB","HAEM1158":"hcsA","HAEM1160":"bcs3","HAEM1161":"bcs2","HAEM1162":"bcs1","HAEM1163":"bexD","HAEM1164":"bexC","HAEM1165":"bexB","HAEM0810":"hpd","NEIS1015":"abcZ_full","NEIS1279":"aceF","NEIS1727":"ackA2","NEIS1729":"acnA","NEIS1492":"acnB","NEIS0486":"adhA","NEIS1241":"adhC","NEIS0767":"adk_full","NEIS1942":"aldA","NEIS1694":"amiC","NEIS0617":"ampD","NEIS1808":"ampG","NEIS1549":"aniA","NEIS2779":"aniA","NEIS1788":"anmK","NEIS0610":"apaH","NEIS1205":"ape1","NEIS0580":"argH","NEIS1810":"aroE_full","NEIS1769":"ArsR","NEIS1566":"AsnC","NEIS1185":"aspA","NEIS2274":"atlA","NEIS1859":"autA","NEIS1676":"bioF","NEIS0363":"carB","NEIS1645":"CcoN","NEIS1643":"CcoO","NEIS2019":"chpA","NEIS0775":"clpS","NEIS1237":"cmk","NEIS2743":"cnl","NEIS1995":"comP","NEIS2157":"csaA","NEIS2158":"csaB","NEIS2159":"csaC","NEIS2160":"csaD","NEIS2161":"csb","NEIS0051":"csc","NEIS2165":"cseA","NEIS2166":"cseB","NEIS2167":"cseC","NEIS2168":"cseD","NEIS2169":"cseE","NEIS2170":"cseF","NEIS2171":"cseG","NEIS2177":"cshC","NEIS2178":"cshD","NEIS2184":"cslA","NEIS2185":"cslB","NEIS2186":"cslC","NEIS2277":"cspA","NEIS0054":"cssA","NEIS0053":"cssB","NEIS0052":"cssC","NEIS0050":"cssE",
 "NEIS2164":"cssF","NEIS2162":"csw","NEIS2187":"csxA","NEIS2188":"csxB","NEIS2189":"csxC","NEIS2163":"csy","NEIS2173":"cszA,cshA","NEIS2174":"cszB,cshB","NEIS2175":"cszC","NEIS2176":"cszD","NEIS0055":"ctrA","NEIS0056":"ctrB","NEIS0057":"ctrC","NEIS0058":"ctrD","NEIS0066":"ctrE","NEIS0067":"ctrF","NEIS0049":"ctrG","NEIS2066":"cybB","NEIS1094":"cysD","NEIS1096":"cysG","NEIS1095":"cysH","NEIS1091":"cysI","NEIS1092":"cysJ","NEIS1093":"cysN","NEIS0822":"cysU","NEIS0166":"dadA","NEIS1731":"ddpX","NEIS0321":"dnaN","NEIS1443":"dnaQ","NEIS0273":"dsbA1","NEIS1885":"dsbA2","NEIS1760":"dsbA3","NEIS2260":"dsbC","NEIS1220":"eno","NEIS2311":"eppA","NEIS0366":"ermB","NEIS2487":"ermE","NEIS2133":"etfB","NEIS2521":"exl2","NEIS2276":"exp1","NEIS2278":"exp2","NEIS1853":"farA","NEIS1852":"farB","NEIS0350":"fba","NEIS0004":"fbp","NEIS1022":"fbp","NEIS1963":"fetA","NEIS0340":"fetB2","NEIS0349":"fHbp","NEIS1353":"fis","NEIS1027":"folB","NEIS1609":"folP","NEIS1534":"fumA","NEIS1396":"fumC_full","NEIS0197":"fur","NEIS0062":"galE2","NEIS0048":"galE","NEIS1778":"galM","NEIS0581":"galU","NEIS2137":"gapA2",
@@ -85,8 +87,8 @@ serotypes = {
     "e":{"essential":["ecs1","ecs2","ecs3","ecs4","ecs5","ecs6","ecs7","ecs8","bexA","bexB","bexC","bexD","hcsA","hcsB"],"nonessential":[]},
 }
 capsule_gene_list = ["csaD","csaC","csaB","csaA","csb","cssC","cssB","cssA","csc","csw","csy","cseA","cseB","cseC","cseD",
-                        "cseE","cseG","cshA","cshB","cshC","cshD","cszA,cshA","cszB,cshB","cszC","cszD","csiA","csiB","csiC","csiD","csiE",
-                            "cskA","cskB","cskC","cskD","cskE","cslA","cslB","cslC","csxA","csxB","csxC","ctrA","ctrB","ctrC","ctrD","tex","ctrE","ctrF"]
+                     "cseE","cseG","cshA","cshB","cshC","cshD","cszA,cshA","cszB,cshB","cszC","cszD","csiA","csiB","csiC","csiD","csiE",
+                     "cskA","cskB","cskC","cskD","cskE","cslA","cslB","cslC","csxA","csxB","csxC","ctrA","ctrB","ctrC","ctrD","tex","ctrE","ctrF"]
 ST_unique = {"fcs1":"f","fcs2":"f","fcs3":"f",
             "acs1":"a","acs2":"a","acs3":"a","acs4":"a",
             "ccs1":"c","ccs2":"c","ccs3":"c","ccs4":"c",
@@ -106,19 +108,40 @@ SG_unique = {"csaD":"A","csaC":"A","csaB":"A","csaA":"A",
                 "cskA":"K","cskB":"K","cskC":"K","cskD":"K","cskE":"K",
                 "cslA":"L","cslB":"L","cslC":"L",
                 "csxA":"X","csxB":"X","csxC":"X"}
-
+            
 #Change BMScan species names to PubMLST db name
-species_dict = {"neisseria":"neisseria","Haemophilus influenzae":"hinfluenzae"}
+species_dict = {"neisseria": "neisseria", "hinfluenzae": "hinfluenzae", "Haemophilus influenzae": "hinfluenzae"}
 
-### Check if output directory exists, if not, create, if yes, set global output to dir ###
-def set_output(output):
-    global OUTPUT_DIR
-    OUTPUT_DIR = output
-    if os.path.isdir(output):
-        print("Output Directory",output,"already exists, not creating")
-    else:
-        os.system("mkdir {}".format(output))
-        print("Created Output Directory",output)
+
+def set_log_level(error, debug):
+    """Set the output log level."""
+    return logging.ERROR if error else logging.DEBUG if debug else logging.INFO
+
+
+def get_log_level():
+    """Return logging level name."""
+    return logging.getLevelName(logging.getLogger().getEffectiveLevel())
+
+
+def execute(cmd, directory=os.getcwd(), capture=False, stdout_file=None, stderr_file=None):
+    """A simple wrapper around executor."""
+    from executor import ExternalCommand, ExternalCommandFailed
+    try:
+        command = ExternalCommand(
+            cmd, directory=directory, capture=True, capture_stderr=True,
+            stdout_file=stdout_file, stderr_file=stderr_file
+        )
+        command.start()
+        if get_log_level() == 'DEBUG':
+            logging.log(STDOUT, command.decoded_stdout)
+            logging.log(STDERR, command.decoded_stderr)
+
+        if capture:
+            return [command.decoded_stdout, command.decoded_stderr]
+        return True
+    except ExternalCommandFailed as error:
+        raise error
+
 
 def find_all(a_str, sub):
     start = 0
@@ -130,25 +153,25 @@ def find_all(a_str, sub):
 
 ### Parse blast results, filter for best allele
 # Note: input_file is just a key used for the dictionaries
-def analyze_blast(results,input_file,seq_dict_fields):
-    results_dict = {"species":seq_dict_fields[input_file]["species"],"contigs":{}}
+def analyze_blast(results, input_file, seq_dict_fields):
+    results_dict = {"species": seq_dict_fields[input_file]["species"], "contigs":{}}
     final_dict = {}
     final_dict[input_file] = {"species":seq_dict_fields[input_file]["species"],"contigs":{}}
-    #final_dict[input_file]["species"] = seq_dict[input_file]["species"]
     for item in results:
         for line in item:
-            line = line.decode(encoding)
-            if line.strip() != "":
-                pident = line.split("\t")[2]
+            line = line.strip()
+            if line:
+                cols = line.split("\t")
+                pident = cols[2]
                 ident = float(pident)
                 #only keep hits with 90% or greater identity
                 if ident < 50.0:
                     continue
-                query_name = line.split("\t")[0]
+                query_name = cols[0]
                 contig = query_name
                 if contig not in results_dict["contigs"]:
                     results_dict["contigs"][contig] = {}
-                subject = line.split("\t")[1]
+                subject = cols[1]
                 allele_num = subject.split("_")[-1]
                 subject_name = re.sub(r'(_{})$'.format(allele_num),r'',subject)
                 if subject_name not in results_dict["contigs"][contig]:
@@ -157,27 +180,26 @@ def analyze_blast(results,input_file,seq_dict_fields):
                     allele_name = gene_names[subject_name]
                 else:
                     allele_name = subject_name
-                qcovs = line.split("\t")[3]
-                qstart = line.split("\t")[6]
-                qend = line.split("\t")[7]
-                score = float(line.split("\t")[10])
-                send = int(line.split("\t")[9])
-                sstart = int(line.split("\t")[8])
-                a_length = int(line.split("\t")[11])
-                s_len = int(line.split("\t")[13])
-                q_len = int(line.split("\t")[12])
-                qseq = line.split("\t")[15]
+                qstart = cols[6]
+                qend = cols[7]
+                score = float(cols[10])
+                send = int(cols[9])
+                sstart = int(cols[8])
+                a_length = int(cols[11])
+                s_len = int(cols[13])
+                q_len = int(cols[12])
+                qseq = cols[15]
                 if int(qstart) > int(qend):
-                    qstart = line.split("\t")[7]
-                    qend = line.split("\t")[6]
-                coordinates = qstart+"*"+qend
+                    qstart = cols[7]
+                    qend = cols[6]
+                coordinates =  f"{qstart}*{qend}"
                 if coordinates not in results_dict["contigs"][contig][subject_name]:
                     results_dict["contigs"][contig][subject_name][coordinates] = {}
                 if allele_num not in results_dict["contigs"][contig][subject_name][coordinates]:
                     results_dict["contigs"][contig][subject_name][coordinates][allele_num] = []
                 try:
-                    sframe = str(line.split("\t")[14])
-                    qframe = str(line.split("\t")[16])
+                    sframe = str(cols[14])
+                    qframe = str(cols[16])
                     sminus = "-" in sframe
                     qminus = "-" in qframe
                     if sminus and qminus:
@@ -188,7 +210,22 @@ def analyze_blast(results,input_file,seq_dict_fields):
                         strand = '+'
                 except:
                     strand = "+"
-                hit_info = {"allele_name":allele_name,"new":False,"length":a_length,"q_length":q_len,"identity":pident,"score":score,"qstart":qstart,"qend":qend,"contig":query_name,"strand":strand,"allele_id":allele_num,"s_length":s_len,"a_length":a_length,"qseq":qseq}
+                hit_info = {
+                    "allele_name": allele_name,
+                    "new":False,
+                    "length":a_length,
+                    "q_length":q_len,
+                    "identity":pident,
+                    "score":score,
+                    "qstart":qstart,
+                    "qend":qend,
+                    "contig":query_name,
+                    "strand":strand,
+                    "allele_id":allele_num,
+                    "s_length":s_len,
+                    "a_length":a_length,
+                    "qseq":qseq
+                }
                 results_dict["contigs"][contig][subject_name][coordinates][allele_num].append(hit_info)
 
     complete_cov = {}
@@ -309,7 +346,26 @@ def analyze_blast(results,input_file,seq_dict_fields):
                             else:
                                 region_type = "CDS"
                             #Stores metadata in final results dict
-                            hit = {"region_type":region_type,"false_pos":false_pos,"allele":allele,"factor":factor,"allele_name":allele_name,"edge":edge_match,"new":False,"qseq":str(qseq),"cov":cov,"subject_length": subject_length, "align_length":align_length,"allele_id":a_num["allele_id"],"identity":current_identity,"score":current_score,"contig":a_num["contig"],"strand":a_num["strand"],"qstart":a_num["qstart"],"qend":a_num["qend"]}
+                            hit = {
+                                "region_type":region_type,
+                                "false_pos":false_pos,
+                                "allele":allele,
+                                "factor":factor,
+                                "allele_name":allele_name,
+                                "edge":edge_match,
+                                "new":False,
+                                "qseq":str(qseq),
+                                "cov":cov,
+                                "subject_length": subject_length,
+                                "align_length":align_length,
+                                "allele_id":a_num["allele_id"],
+                                "identity":current_identity,
+                                "score":current_score,
+                                "contig":a_num["contig"],
+                                "strand":a_num["strand"],
+                                "qstart":a_num["qstart"],
+                                "qend":a_num["qend"]
+                            }
                             final_dict[input_file]["contigs"][contig][allele].append(hit)
 
     for allele in complete_cov:
@@ -324,14 +380,6 @@ def analyze_blast(results,input_file,seq_dict_fields):
                         hit["false_pos"] = True
     return final_dict
 
-
-#~ c.execute("select * from Gene where name like'{}'".format(edited_allele))
-#~ a_result = c.fetchone()
-#~ if a_result:
-    #~ allele_db_id = a_result[0]
-    #~ c.execute("select * from Annotation where gene_id='{}'".format(allele_db_id))
-    #~ results = c.fetchall()
-
 def sql_find_allele(edited_allele):
     c.execute("select * from Gene where name like'{}'".format(edited_allele))
     a_result = c.fetchone()
@@ -343,8 +391,8 @@ def sql_get_annotations(allele_db_id):
     return results
 
 ## Step 2 - finds best hit per coordinate range    and pulls pubmlst info for best hits
-def analyze_results(results_dict,threads,internal_stop):
-    print("Parsing BLAST data to identify alleles to extract from pubMLST")
+def analyze_results(results_dict, threads, internal_stop):
+    logging.info("Parsing BLAST data to identify alleles to extract from pubMLST")
     ### Gets id-specific allele information such as sequence and flag information from pubMLST for each result ###
     internal_stop_dict = {}
     alleles_to_grab = {}
@@ -382,8 +430,8 @@ def analyze_results(results_dict,threads,internal_stop):
                             continue
                         hits_to_remove = []
                         allele_name = hit["allele_name"]
-                        allele_id = hit["allele_id"]                 
-                        start = int(hit["qstart"])                     
+                        allele_id = hit["allele_id"]
+                        start = int(hit["qstart"])
                         stop = int(hit["qend"])
                         score = float(hit["factor"])
                         edge_match = hit["edge"]
@@ -538,7 +586,7 @@ def analyze_results(results_dict,threads,internal_stop):
                             continue
                         edited_allele = allele.replace("'","")
                         for i in range(0,10000):
-                            try:     
+                            try:
                                 a_result = sql_find_allele(edited_allele)
                                 break
                             except:
@@ -572,42 +620,59 @@ def analyze_results(results_dict,threads,internal_stop):
         for allele in alleles_to_grab[species]:
             for allele_id in alleles_to_grab[species][allele]:
                 allele_count+=1
-    print("Grabbing allele information from pubMLST for {} alleles".format(allele_count))
-    q=0
+
+    # logging.info("Grabbing allele information from pubMLST for {} alleles".format(allele_count))
+    # q=0
     for species in alleles_to_grab:
         for allele in alleles_to_grab[species]:
             if allele not in allele_info:
                 allele_info[allele] = {}
             for allele_id in alleles_to_grab[species][allele]:
+                if allele_id not in allele_info[allele]:
+                    allele_info[allele][allele_id] = {"flags": [], "comments": []}
+                """
+                SKIP API QUERY SINCE FIELDS 'comments', 'flags', and 'mutaitons' DON'T SEEM TO BE AVAILABLE
+                https://bigsdb.readthedocs.io/en/latest/rest.html#get-db-database-loci-locus-alleles-allele-id-retrieve-full-allele-information
+                mutations, flags, and comments are listed as fields available
+                locus [string] - URI to locus description
+                allele_id [string] - allele identifier
+                sequence [string] - sequence
+                status [string] - either ‘Sanger trace checked’, ‘WGS: manual extract’, ‘WGS: automated extract’, or ‘unchecked’
+                sender [string] - URI to user details of sender
+                curator [string] - URI to user details of curator
+                date_entered [string] - record creation date (ISO 8601 format)
+                datestamp [string] - last updated date (ISO 8601 format)
+
                 if "Haemophilus influenzae" in species:
                     temp_species = "hinfluenzae"
                 else:
                     temp_species = species
-                url = "http://{}/db/pubmlst_{}_seqdef/loci/{}/alleles/{}".format(_pubmlst_server,temp_species,allele,allele_id)
-                request = http.request('GET',url)
-                request_data = json.loads(request.data.decode('utf-8'))
-                #pp.pprint(request_data)
-                if allele_id not in allele_info[allele]:
-                    allele_info[allele][allele_id] = {}
+                url = f"http://rest.pubmlst.org/db/pubmlst_{temp_species}_seqdef/loci/{allele}/alleles/{allele_id}"
+                request_data = requests.get(url).json()
+
                 if "flags" in request_data:
+                    print(url, request_data["flags"])
                     flags = request_data["flags"]
                 else:
                     flags = []
                 if "comments" in request_data:
+                    print(url, request_data["comments"])
                     comments = request_data["comments"]
                 else:
                     comments = []
                 for field in request_data:
                     if "mutation" in field:
+                        print(url, "mutation")
                         allele_info[allele][allele_id][field] = request_data[field]
                 allele_info[allele][allele_id]["flags"] = flags
                 allele_info[allele][allele_id]["comments"] = comments
                 q+=1
-                if (q%500) == 0:
-                        print("Completed {} so far".format(str(q)))
+                if (q % 500) == 0:
+                        logging.info("Completed {} so far".format(str(q)))
+                """
 
 
-    print("Compiling results")
+    logging.info("Compiling results")
     for in_file in results_dict:
         for contig in results_dict[in_file]["contigs"]:
             if contig == "species":
@@ -697,16 +762,14 @@ def analyze_results(results_dict,threads,internal_stop):
                                         if "N/A" in hit["flags"]:
                                             hit["flags"].pop("N/A")
 
-                                 
-    return results_dict,internal_stop_dict
+    return results_dict, internal_stop_dict
 
-def create_gff(results_dict,scheme_data,seq_dict):
+def create_gff(gff_out, results_dict, scheme_data, seq_dict):
     for in_file in results_dict:
-        text = ""
+        text = []
         header_info = ""
         fasta_text = ""
-        out_path = os.path.join(OUTPUT_DIR,"gff")
-        with open(os.path.join(out_path,"{}.gff".format(in_file.replace(".fasta",""))),"w") as f:
+        with open(gff_out, "wt") as f:
             print_file = False
             for contig in results_dict[in_file]["contigs"]:
                 if contig == "species":
@@ -738,7 +801,6 @@ def create_gff(results_dict,scheme_data,seq_dict):
                         allele_id = str(seq_dict[in_file]["contigs"][contig]["alleles"][hit]["allele_id"])
                         start = str(seq_dict[in_file]["contigs"][contig]["alleles"][hit]["qstart"])
                         stop = str(seq_dict[in_file]["contigs"][contig]["alleles"][hit]["qend"])
-#                        score = str(seq_dict[in_file]["contigs"][contig]["alleles"][hit]["score"])
                         strand = str(seq_dict[in_file]["contigs"][contig]["alleles"][hit]["strand"])
                         raw_flags = seq_dict[in_file]["contigs"][contig]["alleles"][hit]["flags"]
                         if len(raw_flags) == 1:
@@ -753,164 +815,61 @@ def create_gff(results_dict,scheme_data,seq_dict):
                         new = seq_dict[in_file]["contigs"][contig]["alleles"][hit]["new"]
                         edge_match = seq_dict[in_file]["contigs"][contig]["alleles"][hit]["edge"]
                         identity = seq_dict[in_file]["contigs"][contig]["alleles"][hit]["identity"]
-#                        a_length = seq_dict[in_file]["contigs"][contig]["alleles"][hit]["align_length"]
-#                        s_length = seq_dict[in_file]["contigs"][contig]["alleles"][hit]["subject_length"]
                         region_type = seq_dict[in_file]["contigs"][contig]["alleles"][hit]["region_type"]
                         cov = float(seq_dict[in_file]["contigs"][contig]["alleles"][hit]["cov"])
                         cov = round(cov,2)
                         cov = cov*100.0
-                        if new and edge_match:
-                            text += contig +"\t" + "pubMLST" + "\t" + "{}".format(region_type) + "\t" + start + "\t" + stop + "\t" + "." + "\t" + strand + "\t" + "0" + "\t" + "ID={}_{};gene={};allele_id={};inference={};locus_tag={}_{};flags={};product={};scheme={}\n".format(contig,count,allele_name,allele_id,"pubmlst",contig,count,flags,annotations,scheme_type)
-                        elif new and not edge_match:
-                            text += contig +"\t" + "pubMLST" + "\t" + "{}".format(region_type) + "\t" + start + "\t" + stop + "\t" + "." + "\t" + strand + "\t" + "0" + "\t" + "ID={}_{};gene={};allele_id={};inference={};locus_tag={}_{};flags={};product={};scheme={}\n".format(contig,count,allele_name,allele_id,"pubmlst",contig,count,flags,annotations,scheme_type)
-                        elif cov != 100:
-                            text += contig +"\t" + "pubMLST" + "\t" + "{}".format(region_type) + "\t" + start + "\t" + stop + "\t" + "." + "\t" + strand + "\t" + "0" + "\t" + "ID={}_{};gene={};allele_id={};inference={};locus_tag={}_{};flags={};product={};scheme={}\n".format(contig,count,allele_name,allele_id,"pubmlst",contig,count,flags,annotations,scheme_type)
-                        else:
-                            text += contig +"\t" + "pubMLST" + "\t" + "{}".format(region_type) + "\t" + start + "\t" + stop + "\t" + "." + "\t" + strand + "\t" + "0" + "\t" + "ID={}_{};gene={};allele_id={};inference={};locus_tag={}_{};flags={};product={};scheme={}\n".format(contig,count,allele_name,allele_id,"pubmlst",contig,count,flags,annotations,scheme_type)
+                        text.append(f"{contig}\tpubMLST\t{region_type}\t{start}\t{stop}\t.\t{strand}\t0\tID={contig}_{count};gene={allele_name};allele_id={allele_id};inference=pubmlst;locus_tag={contig}_{count};flags={flags};product={annotations};scheme={scheme_type}")
                         count+=1
                 header_info += "##sequence-region {} 1 {}\n".format(contig,str(seq_length))
                 fasta_text += ">{}\n".format(contig)
                 fasta_text += "{}\n".format(sequence)
             f.write("##gff-version 3\n")
             f.write(header_info)
-            f.write(text)
+            f.write("\n".join(text))
             f.write("##FASTA\n")
             f.write(fasta_text)
 
-def blast_command(blast_db,query_file,threads_to_use,nucl):
+def blast_command(blast_db, query_file, threads_to_use, nucl):
     if nucl:
-        results = check_output(["blastn","-db",blast_db,"-outfmt","6 qseqid sseqid pident qcovus mismatch gapopen qstart qend sstart send score length qlen slen sframe qseq qframe","-query",query_file,"-num_threads",threads_to_use,"-max_target_seqs","200"], shell=False)
+        results = check_output(["blastn","-db",blast_db,"-outfmt","6 qseqid sseqid pident qcovus mismatch gapopen qstart qend sstart send score length qlen slen sframe qseq qframe","-query",query_file,"-num_threads",threads_to_use,"-max_target_seqs","200"], universal_newlines=True, shell=False)
     else:
-        results = check_output(["blastx","-db",blast_db,"-outfmt","6 qseqid sseqid pident qcovus mismatch gapopen qstart qend sstart send score length qlen slen sframe qseq qframe","-query",query_file,"-num_threads",threads_to_use,"-query_gencode","11","-max_target_seqs","200","-seg","no"], shell=False)
+        results = check_output(["blastx","-db",blast_db,"-outfmt","6 qseqid sseqid pident qcovus mismatch gapopen qstart qend sstart send score length qlen slen sframe qseq qframe","-query",query_file,"-num_threads",threads_to_use,"-query_gencode","11","-max_target_seqs","200","-seg","no"], universal_newlines=True, shell=False)
     return results
 
 
-def run_blast(working_dir,input_file,threads_to_use,blast_dir,seq_dict,seq_dict_key):
-    processes = int(threads_to_use)
-    print("Blasting against pubMLST database with",threads_to_use,"workers for file {}".format(input_file))
+def run_blast(input_fasta, prefix, threads_to_use, blast_dir, seq_dict):
+    logging.info(f"Blasting against pubMLST database with {threads_to_use} workers for file {input_fasta}")
+
     ## Setup pool for multiprocessing ###
-    pool = Pool(processes)
-    folders = {}
-    i=0
+    pool = Pool(threads_to_use)
+
     ### Setup 2d array to arrange jobs for multiprocessing ###
-    folders[i] = {}
     folders = []
     for folder in os.listdir(blast_dir):
         folders.append(folder)
+
     ### setup query file path and check if blast DB is protein or nucleotide ###
-    query_file = os.path.join(working_dir,input_file)
     nucl_dict = {}
     for folder in folders:
         nucl = True
-        for item in os.listdir(os.path.join(blast_dir,folder)):
+        for item in os.listdir(os.path.join(blast_dir, folder)):
             if ".pin" in item:
                 nucl = False
         nucl_dict[folder] = nucl
+
     ### list comprehension to launch blast_command for each thread - sends all jobs to pool and pool updates jobs as others finish ###
-    blast_time = [pool.apply_async(blast_command,args=(os.path.join(blast_dir,folder,folder),query_file,"1",nucl_dict[folder])) for folder in folders]
+    blast_time = [pool.apply_async(blast_command, args=(os.path.join(blast_dir,folder,folder), input_fasta, "1", nucl_dict[folder])) for folder in folders]
     output = [result.get() for result in blast_time]
-    blast_final_results = [re.split(b"\n",item.rstrip()) for item in output]
-    print("Completed BLAST for",input_file)
-    pool.terminate()  
-    final_dict = analyze_blast(
-            blast_final_results,
-            seq_dict_key,
-            seq_dict
-            )
-    print("BLAST dict has {} records".format(len(final_dict)))
+    blast_final_results = [item.split("\n") for item in output]
+    logging.info(f"Completed BLAST for {input_fasta}")
+    pool.terminate()
+
+    # Organize results
+    final_dict = analyze_blast(blast_final_results, prefix, seq_dict)
+    logging.debug(f"BLAST dict has {len(final_dict)} records")
+
     return final_dict
-
-def get_schemes():
-    print("Obtaining pubMLST schemes")
-    ### Obtain list of schemes and then each scheme individually from pubMLST for Neisseria sp. and load into dict ###
-    schemes = {}
-    #scheme_url = "http://{}/db/pubmlst_neisseria_seqdef/schemes".format(_pubmlst_server)
-    scheme_url = "http://rest.pubmlst.org/db/pubmlst_neisseria_seqdef/schemes"
-    scheme_request = http.request('GET',scheme_url)
-    scheme_request_data = json.loads(scheme_request.data.decode('utf-8'))
-    #pp.pprint(scheme_request_data)
-    for scheme in scheme_request_data["schemes"]:
-        url = scheme["scheme"]
-        #print(url)
-        request = http.request('GET',url)
-        request_data = json.loads(request.data.decode('utf-8'))
-        #pp.pprint(request_data)
-        #~ if "description" not in request_data:
-            #~ print(request_data)
-        description = request_data["description"]
-        if "loci" in request_data:
-            schemes[description] = []
-            for loci in request_data["loci"]:
-                allele = loci.split("/")[-1]
-                schemes[description].append(allele)
-    print("Schemes obtained")
-    return schemes
-
-def calc_frequencies(final_results_dict,char_data):
-    frequencies = {}
-    #pp.pprint(final_results_dict)
-    ## Get counts of samples for each group ##
-    for entry in char_data:
-        group = char_data[entry]
-        if group not in frequencies:
-            frequencies[group] = {"count":0,"allele":{}}
-        frequencies[group]["count"] +=1
-
-    for in_file in final_results_dict:
-        file_name = in_file
-        allele_seen = {}
-        internal_stop_seen = {}
-        allele_id_seen = {}
-        current_group = char_data[file_name]
-        for query in final_results_dict[in_file]["contigs"]:
-            if query == "species":
-                continue
-            for allele in final_results_dict[in_file]["contigs"][query]:
-                add = False
-                if final_results_dict[in_file]["contigs"][query][allele]:
-                    for hit in final_results_dict[in_file]["contigs"][query][allele]:
-                        if hit["region_type"] == "CDS":
-                            add = True
-                        else:
-                            add = False
-                    if add:
-                        if allele not in internal_stop_seen:
-                            internal_stop_seen[allele] = False
-                        if allele not in allele_seen:
-                            allele_seen[allele] = False
-                        if allele not in allele_id_seen:
-                            allele_id_seen[allele] = []
-                        for hit in final_results_dict[in_file]["contigs"][query][allele]:
-                            edge = hit["edge"]
-                            allele_id = hit["allele_id"]
-                            raw_flags = hit["flags"]
-                            if edge:
-                                if allele in frequencies[current_group]["allele"]:
-                                    continue
-                            if len(raw_flags) == 1:
-                                flags = raw_flags[0]
-                            elif len(raw_flags) > 1:
-                                flags = ",".join(raw_flags)
-                            else:
-                                flags = "N/A"
-                            if allele not in frequencies[current_group]["allele"]:
-                                frequencies[current_group]["allele"][allele] = {"non_func_count":0,"allele_id":{},"pres_count":0}
-                            if "internal stop" in flags or "phase" in flags:
-                                if not internal_stop_seen[allele]:
-                                    frequencies[current_group]["allele"][allele]["non_func_count"]+=1
-                                    internal_stop_seen[allele] = True
-                            if allele_id not in frequencies[current_group]["allele"][allele]["allele_id"]:
-                                frequencies[current_group]["allele"][allele]["allele_id"][allele_id] =1
-                            #else:
-                            #    frequencies[current_group]["allele"][allele]["allele_id"][allele_id]+=1
-                            elif allele_id not in allele_id_seen[allele]:
-                                frequencies[current_group]["allele"][allele]["allele_id"][allele_id]+=1
-                                allele_id_seen[allele].append(allele_id)
-                        if not allele_seen[allele]:
-                            frequencies[current_group]["allele"][allele]["pres_count"]+=1
-                            allele_seen[allele] = True
-    return frequencies
-
 
 
 def compare_alleles(final_results_dict,frequencies):
@@ -1045,13 +1004,12 @@ def compare_alleles(final_results_dict,frequencies):
                     f.write("\t{}".format(str(freq)))
             f.write("\n")
 
-def generate_sg_predictions(data):
-    out_path = os.path.join(OUTPUT_DIR,"serogroup")
+def generate_sg_predictions(data, outdir):
     neisseria_set = {}
     sg_results = {"Serogroup":[],"Serotype":[]}
     hi_set = {}
     for query in sorted(data):
-        species = data[query]["species"]
+        species = species_dict[data[query]["species"]]
         if species == "neisseria":
             neisseria_set[query] = data[query]
         elif species == "hinfluenzae":
@@ -1059,7 +1017,7 @@ def generate_sg_predictions(data):
 
     ## Neisseria SG Prediction
     if neisseria_set:
-        with open(os.path.join(out_path,"serogroup_predictions_{}.tab".format(time.time())),"w") as f:
+        with open(f"{outdir}/serogroup-predictions.txt", "wt") as f:
             f.write("Query\tSG\tGenes_Present\tNotes\n")
             for query in sorted(neisseria_set):
                 sg_dict = {"sample_name":query,"predicted_sg":"","baseSG":"","genes":[]}
@@ -1292,7 +1250,7 @@ def generate_sg_predictions(data):
                 f.write(result_line)
 
     if hi_set:
-        with open(os.path.join(out_path,"serotype_predictions_{}.tab".format(time.time())),"w") as f:
+        with open(f"{outdir}/serotype-predictions.txt", "wt") as f:
             f.write("Query\tST\tGenes_Present\tNotes\n")
             for query in sorted(hi_set):
                 st_dict = {"sample_name":query,"predicted_st":"","baseST":"","genes":[]}
@@ -1491,117 +1449,16 @@ def generate_sg_predictions(data):
                 st_dict["baseST"] = final_st
                 sg_results["Serotype"].append(st_dict)
                 f.write(result_line)
-    with open(os.path.join(OUTPUT_DIR,"serogroup","serogroup_results.json"),"w") as f:
+    with open(f"{outdir}/serogroup-results.json","wt") as f:
         json.dump(sg_results,f)
 
-## in development ##
-def find_promoters(final_dict,seq_dict):
-    promoter_dict = {}
-    for query in final_dict:
-        promoter_dict[query] = {}
-        for contig in final_dict[query]["contigs"]:
-            if contig == "species":
-                continue
-            promoter_dict[query][contig] = {}
-            contig_elements = {}
-            sequence = seq_dict[query]["contigs"][contig]["seq"]
-            for feature in final_dict[query]["contigs"][contig]:
-                if final_dict[query]["contigs"][contig][feature]:
-                    for allele in final_dict[query]["contigs"][contig][feature]:
-                        region_type = allele["region_type"]
-                        allele_name = allele["allele_name"]
-                        allele_id= allele["allele_id"]
-                        start_pos = int(allele["qstart"])
-                        strand = allele["strand"]
-                        stop_pos = int(allele["qend"])
-                        allele_identifier = allele_name+"*"+allele_id
-                        if region_type == "CDS" or region_type == "ISE":
-                            contig_elements[start_pos] = {"name":allele_identifier,"stop":stop_pos,"strand":strand}
-            current_start = 0
-            interval = 100
-            first = True
-            for start_pos in sorted(contig_elements.keys()):
-                stop_pos = contig_elements[start_pos]["stop"]
-                contig_end = len(sequence)
-                strand = contig_elements[start_pos]["strand"]
-                allele_identifier = contig_elements[start_pos]["name"]
-                if first:
-                    if strand == "+":
-                        if (start_pos-current_start) >= interval:
-                            igr_region = sequence[current_start:start_pos]
-                            promoter_dict[query][contig][allele_identifier] = str(igr_region)
-                            current_start = start_pos
-                            current_stop = stop_pos
-                            current_strand = strand
-                            current_allele = allele_identifier
-                            first = False
-                            continue
-                        else:
-                            current_start = start_pos
-                            current_stop = stop_pos
-                            current_strand = strand
-                            first = False
-                            continue
-                    else:
-                        current_start = start_pos
-                        current_stop = stop_pos
-                        current_strand = strand
-                        current_allele = allele_identifier
-                        first = False
-                        continue
-                if strand == "+":
-                    if (start_pos-current_stop) >= interval:
-                        igr_region = sequence[current_stop:start_pos]
-                        promoter_dict[query][contig][allele_identifier] = str(igr_region.reverse_complement())
-                        current_start = start_pos
-                        current_stop = stop_pos
-                        current_strand = strand
-                        current_allele = allele_identifier
-                    else:
-                        current_start = start_pos
-                        current_stop = stop_pos
-                        current_strand = strand
-                        current_allele = allele_identifier
-                else:
-                    if (start_pos-current_stop) >= interval:
-                        if strand == current_strand:
-                            igr_region = sequence[current_stop:start_pos]
-                            promoter_dict[query][contig][allele_identifier] = str(igr_region.complement())
-                            current_start = start_pos
-                            current_stop = stop_pos
-                            current_strand = strand
-                            current_allele = allele_identifier
-                        else:
-                            igr_region = sequence[current_stop:start_pos]
-                            promoter_dict[query][contig][allele_identifier] = str(igr_region.complement())
-                            current_start = start_pos
-                            current_stop = stop_pos
-                            current_strand = strand
-                            current_allele = allele_identifier
-                    else:
-                        current_start = start_pos
-                        current_stop = stop_pos
-                        current_strand = strand
-                        current_allele = allele_identifier
 
-    for query in promoter_dict:
-        with open(os.path.join(OUTPUT_DIR,"igr","{}_igr.fasta".format(query)),"w") as f:
-            for contig in promoter_dict[query]:
-                if contig == "species":
-                    continue
-                for allele_name in promoter_dict[query][contig]:
-                    if "Insertion_Element" in allele_name:
-                        continue
-                    allele_rename = allele_name.replace("*","_")
-                    f.write(">{}\n".format(allele_rename))
-                    f.write("{}\n".format(promoter_dict[query][contig][allele_name]))
-
-def output_fastas(final_results_dict):
+def output_fastas(final_results_dict, outdir):
     for query in final_results_dict:
         type_dict = {}
-        edited_query = query
-        if not os.path.isdir(os.path.join(OUTPUT_DIR,"feature_fastas",edited_query)):
-            os.system("mkdir {}".format(os.path.join(OUTPUT_DIR,"feature_fastas",edited_query)))
+        query_outdir = f"{outdir}/feature_fastas/{query}"
+        if not os.path.isdir(query_outdir):
+            execute(f"mkdir {query_outdir}")
 
         for contig in final_results_dict[query]["contigs"]:
             if contig == "species":
@@ -1618,15 +1475,15 @@ def output_fastas(final_results_dict):
                     if allele_identifier not in type_dict[region_type]:
                         type_dict[region_type][allele_identifier] = sequence
 
-    #pp.pprint(type_dict)
         for region_type in type_dict:
-            with open(os.path.join(OUTPUT_DIR,"feature_fastas",edited_query,"{}.fasta".format(region_type)),"w") as f:
+            with open(f"{query_outdir}/{region_type}.fasta","wt") as fh:
                 for allele in type_dict[region_type]:
-                    f.write(">{}\n".format(allele))
-                    f.write("{}\n".format(type_dict[region_type][allele]))
+                    fh.write(f">{allele}\n")
+                    fh.write(f"{type_dict[region_type][allele]}\n")
+
 
 #BMScan code - skips if BMScan Json provided
-def obtain_species(input_dir,threads):
+def obtain_species(input_fasta, threads):
     final_sp_dict = {}
     temp_dir = tempfile.mkdtemp()
     sketch_info={}
@@ -1642,41 +1499,42 @@ def obtain_species(input_dir,threads):
         if file_path not in thresholds:
             thresholds[file_path] = {"threshold":threshold,"species":species,"genus":genus,"source":source}
 
-    def mash_sketch(threads,input_dir,temp_dir,sketch_info):
-        kmer_size = 21
-        sketch_size = 1000
+    def mash_sketch(threads, input_fasta, temp_dir, sketch_info):
         sketch_info_dict = {}
-        call(["mash sketch -k {} -p {} -s {} -o {} {}".format(kmer_size,threads,sketch_size,os.path.join(temp_dir,"sp_sketch"),os.path.join(input_dir,"*.fasta"))],shell=True,stderr=DEVNULL)
-        sketch_info_dict["path"] = temp_dir+"/sp_sketch.msh"
+        outdir = os.path.join(temp_dir,"sp_sketch")
+        execute(f"mash sketch -k 21 -p {threads} -s 1000 -o {outdir} {input_fasta}")
+        sketch_info_dict["path"] = f"{temp_dir}/sp_sketch.msh"
         sketch_info={"sketch_dict":sketch_info_dict,"temp_dir":temp_dir}
         return sketch_info
 
-    def mash_dist(sketch,mash_db_name,threads,refseq,thresholds):
+    def mash_dist(sketch, mash_db_name, threads, refseq, thresholds):
         mash_results_dict = {}
-        mash_results = check_output(["mash","dist","-p",threads,mash_db_name,sketch],shell=False)
-        mash_result = re.split(b"\n",mash_results.rstrip())
-        for line in mash_result:
-            if refseq:
-                hit = line.decode(encoding).split("\t")[0].split("-")[-1].split(".fna")[0]
-                try:
-                    mash_hit_list = hit.split("_")
-                    if len(mash_hit_list) > 1:
-                        hit = mash_hit_list[0] + " " + mash_hit_list[1]
-                    else:
-                        hit = mash_hit_list[0]
-                except:
-                    pass
-            else:
-                hit = line.decode(encoding).split("\t")[0]
-            query_name = line.decode(encoding).split("\t")[1]
-            query_name = os.path.basename(query_name)
-            if not query_name in mash_results_dict:
-                mash_results_dict[query_name] = {"mash_results":{}}
-            mash_dist = float(line.decode(encoding).split("\t")[2])
-            p_val = line.decode(encoding).split("\t")[3]
-            match_hash = line.decode(encoding).split("\t")[4]
-            mash_score = (1-mash_dist)
-            mash_results_dict[query_name]["mash_results"][hit] = {"score":mash_score,"p_val":p_val,"hash":match_hash,"hit":hit}
+        mash_stdout, mash_stderr = execute(f"mash dist -p {threads} {mash_db_name} {sketch}", capture=True)
+        for line in mash_stdout.split('\n'):
+            if line:
+                cols = line.split('\t')
+                if refseq:
+                    hit = cols[0].split("-")[-1].split(".fna")[0]
+                    try:
+                        mash_hit_list = hit.split("_")
+                        if len(mash_hit_list) > 1:
+                            hit = mash_hit_list[0] + " " + mash_hit_list[1]
+                        else:
+                            hit = mash_hit_list[0]
+                    except:
+                        pass
+                else:
+                    hit = cols[0]
+                query_name = cols[1]
+                query_name = os.path.basename(query_name)
+                if not query_name in mash_results_dict:
+                    mash_results_dict[query_name] = {"mash_results":{}}
+                mash_dist = float(cols[2])
+                p_val = cols[3]
+                match_hash = cols[4]
+                mash_score = (1-mash_dist)
+                mash_results_dict[query_name]["mash_results"][hit] = {"score":mash_score,"p_val":p_val,"hash":match_hash,"hit":hit}
+
         for query in mash_results_dict:
             over_threshold = {}
             mash_results_dict[query]["mash_results"]["Above_Threshold"] = {}
@@ -1715,31 +1573,7 @@ def obtain_species(input_dir,threads):
 
         return mash_results_dict
 
-    def parse_results(results,input_file,thresholds):
-        redo = {}
-        for lab_id in results:
-            path = os.path.join(input_file,lab_id)
-            over_threshold = results[lab_id]["mash_results"]["Above_Threshold"]
-            if not over_threshold:
-                #print(lab_id,"has no scores over thresholds")
-                redo[lab_id] = path
-                continue
-        return redo
-
-    def mash_sketch_refseq(threads,redo,temp_dir):
-        #print("Scanning low-scoring queries against RefSeq")
-        for lab_id in redo:
-            file_path = redo[lab_id] 
-            call(["cp","{}".format(file_path),"{}/".format(temp_dir)],shell=False)
-        threads = threads
-        kmer_size = 21
-        sketch_size = 1000
-        sketch_info_dict = {}
-        call(["mash sketch -k {} -p {} -s {} -o {} {}".format(kmer_size,threads,sketch_size,os.path.join(temp_dir,"sp_ref_sketch"),os.path.join(temp_dir,"*.fasta"))], shell=True,stderr=DEVNULL)
-        sketch_info_dict["path"] = temp_dir+"/sp_ref_sketch.msh"
-        return sketch_info_dict
-
-    def create_json(data,thresholds):
+    def create_json(data, thresholds):
         pre_json = data
         for lab_id in data:
             if lab_id not in pre_json:
@@ -1794,25 +1628,12 @@ def obtain_species(input_dir,threads):
             pre_json[lab_id]["mash_results"] = {"species":mash_species,"top_hit":mash_hit,"mash_pval":mash_pval,"mash_hash":mash_hash,"score":mash_score,"source":mash_source,"notes":notes}
         return pre_json
 
-    sketch_creation = mash_sketch(threads,input_dir,temp_dir,sketch_info)
+    sketch_creation = mash_sketch(threads, input_fasta, temp_dir, sketch_info)
     sketch_path= sketch_creation["sketch_dict"]
-
     mash_results = mash_dist(sketch_path["path"],MASH_DB,threads,False,thresholds)
-    redo_set = parse_results(mash_results,input_dir,thresholds)
-    if redo_set:
-        redo_sketch = mash_sketch_refseq(threads,redo_set,temp_dir)
-        redo_results = mash_dist(redo_sketch["path"],REFSEQ_DB,threads,True,thresholds)
-        for query in redo_results:
-            mash_results[query]["mash_results"] = redo_results[query]["mash_results"]
+    return create_json(mash_results, thresholds)
 
-    final_results = create_json(mash_results,thresholds)
-    for fasta_file in final_results:
-        species = final_results[fasta_file]["mash_results"]["species"]
-        final_results[fasta_file] = species
-    return final_results
-
-def count_loci_per_scheme(scheme_data,results_dict):
-    out_path = OUTPUT_DIR
+def count_loci_per_scheme(scheme_data, results_dict, outdir):
     scheme_counter = {}
     schemes_seen = []
     loci_counts = {}
@@ -1837,7 +1658,7 @@ def count_loci_per_scheme(scheme_data,results_dict):
                                     if allele not in loci_counts[in_file][scheme]:
                                         loci_counts[in_file][scheme].append(allele)
     max_length = len(scheme_counter)
-    with open(os.path.join(out_path,"loci_counts.tab"),"w") as f:
+    with open(f"{outdir}/loci-counts.txt","wt") as f:
         f.write("Lab_ID\t")
         for i in range(0,max_length):
             f.write("{}_{}\t".format(scheme_counter[i].replace(" ","_"),len(scheme_data[scheme_counter[i]])))
@@ -1851,14 +1672,13 @@ def count_loci_per_scheme(scheme_data,results_dict):
                     f.write("0\t")
             f.write("\n")
 
-def create_allele_matrix(results_dict):
+def create_allele_matrix(results_dict, outdir):
     genes_seen = []
     genes_counter = {}
     allele_matrix = {}
     new_alleles = {}
     i=0
     q=1
-    out_path = OUTPUT_DIR
     for in_file in results_dict:
         if in_file not in allele_matrix:
             allele_matrix[in_file] = {}
@@ -1887,7 +1707,7 @@ def create_allele_matrix(results_dict):
                                 if allele_name not in allele_matrix[in_file]:
                                     allele_matrix[in_file][allele_name] = allele_id
     max_length = len(genes_counter)
-    with open(os.path.join(out_path,"allele_matrix.tab"),"w") as f:
+    with open(f"{outdir}/allele-matrix.txt","wt") as f:
         f.write("Lab_ID\t")
         for i in range(0,max_length):
             f.write("{}\t".format(genes_counter[i]))
@@ -1902,321 +1722,190 @@ def create_allele_matrix(results_dict):
                 f.write("{}\t".format(allele_id))
             f.write("\n")
 
-def main():
-    parser = argparse.ArgumentParser(description="Script for annotating genomes using PubMLST allele set")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('-d','--indir',help="Input Dir")
-    group.add_argument('-x','--xlsx',help="Excel file with Filename column and optional Species column ({})".format(', '.join([k for k in species_dict.keys()]))) #TODO: use species_dict.values
-    parser.add_argument('-b','--blastdir',help="Directory containing blast DBs, default to pubmlst_dbs_all")
-    parser.add_argument('-c','--char',help="Characterizations File")
-    parser.add_argument('-sg','--serogroup',help="Produce SG prediction file",action="store_true")
-    parser.add_argument('-pr','--promoters',help="Identify Promoters (Experimental, use at own risk)",action="store_true")
-    parser.add_argument('-is','--internalstop',help="Output internal stop locations in capsule genes",action="store_true")
-    parser.add_argument('-fa','--fastas',help="Output identified gene sequences as FASTAs",action="store_true")
-    parser.add_argument('-fr','--force',help="Force overwrite existing output file",action="store_true")
-    parser.add_argument('-o','--out',help="Output Directory", required=True)
-    parser.add_argument('-j','--jdebug',help="Skip step 1 by providing existing JSON folder with raw blast results")
-    parser.add_argument('-jf','--fdebug',help="Skip step 2 by providing existing JSON folder with final results")
-    parser.add_argument('-s','--species',help="BMScan Json input to skip running BMScan again")
-    parser.add_argument('-sc','--scheme',help="Produce tab-delimited count of loci identified for each gene across all tested genomes",action="store_true")
-    parser.add_argument('-a','--allele_matrix',help="Produce tab-delimited matrix containing all alleles identified per tested genome",action="store_true")
-    parser.add_argument('-t','--threads',help="Number of Threads to use (default=1)",default="1")
-    args = vars(parser.parse_args())
-    ### Print Args ###
-    print ("PubMLST Genome Annotator")
-    print("Version {}".format(VERSION))
-    print("#######################################################################################################")
-    print ("Running with the following parameters:")
-    for arg in args:
-        print (arg,":",args[arg])
-    ##################
+if __name__ == "__main__":
+    import argparse as ap
+    import gzip
+    import json
 
-    ### Get working directory, setup temp folder, set output ###
-    char_data = {}
-    temp_dir = tempfile.mkdtemp()
-    set_output(args["out"])
-    if not args["blastdir"]:
-        main_blast_dir = PUBMLST_DB
-    else:
-        main_blast_dir = args["blastdir"]
-    ### Characterizations file not implemented yet ###
-    if args["char"]:
-        with open(args["char"]) as f:
-            char_text = f.readlines()
-            for line in char_text:
-                name = line.split('\t')[0].replace("\n","")
-                trait = line.split('\t')[1].replace("\n","")
-                char_data[name] = trait
-    if args["internalstop"]:
-        internal_stop = True
-    else:
-        internal_stop = False
-    ##Get files and species for each: by default, the key for each is the filename with no directory and no extension
-    if isinstance(args["indir"],str):
-        working_dir = args["indir"]
-        if not args["species"]:
-            species_info = obtain_species(working_dir,args["threads"])
-            new_species_dict = {}
-            for lab_id in species_info:
-                new_lab_id = lab_id.replace(".fasta","").replace(".fna","")
-                new_species_dict[new_lab_id] = species_info[lab_id]
-            species_info = new_species_dict
+    parser = ap.ArgumentParser(
+        prog=PROGRAM,
+        conflict_handler='resolve',
+        description=(f'{PROGRAM} (v{VERSION}) - {DESCRIPTION}'),
+        formatter_class=ap.RawDescriptionHelpFormatter
+    )
+    parser.add_argument('fasta', metavar="FASTA", type=str,
+                       help="Input FASTA file to analyze")
+
+
+    group2 = parser.add_argument_group('Additional output parameters')
+    parser.add_argument('--prefix', metavar="STR", type=str,
+                        help="Prefix for outputs (Default: Use basename of input FASTA file)")
+    parser.add_argument('--blastdir', metavar="STR", type=str, default="./pubmlst_dbs_all",
+                        help="Directory containing BLAST DBs built by pmga-build (Default: ./pubmlst_dbs_all")
+
+    group2 = parser.add_argument_group('Additional output parameters')
+    group2.add_argument('-is', '--internalstop', action="store_true",
+                        help="Output internal stop locations in capsule genes")
+    group2.add_argument('-fa', '--output_fastas', action="store_true",
+                        help="Output identified gene sequences as FASTAs")
+    group2.add_argument('-sc', '--scheme', action="store_true",
+                        help="Produce tab-delimited count of loci identified for each gene across all tested genomes")
+    group2.add_argument('-a', '--allele_matrix', action="store_true",
+                        help="Produce tab-delimited matrix containing all alleles identified per tested genome")
+
+    group3 = parser.add_argument_group('Additional Options')
+    group3.add_argument('--species', metavar="STR", type=str, choices=["neisseria", "hinfluenzae"],
+                        help=("Use this as the input species (Default: use Mash distance). "
+                              "Available Choices: neisseria, hinfluenzae"))
+    group3.add_argument('-t', '--threads', metavar="INT", type=int, default=1,
+                        help="Number of cores to use (default=1)")
+    group3.add_argument('-o', '--outdir', metavar="STR", type=str, default="./pmga",
+                        help="Directory to output results to (Default: ./pmga)")
+    group3.add_argument('--force', action="store_true",
+                        help="Force overwrite existing output file")
+    group3.add_argument('--verbose', action='store_true',
+                        help='Print debug related text.')
+    group3.add_argument('--silent', action='store_true',
+                        help='Only critical errors will be printed.')
+    group3.add_argument('--version', action='version',
+                        version=f'{PROGRAM} {VERSION}')
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(0)
+
+    args = parser.parse_args()
+
+    # Setup logs
+    FORMAT = '%(asctime)s:%(name)s:%(levelname)s - %(message)s'
+    logging.basicConfig(format=FORMAT, datefmt='%Y-%m-%d %H:%M:%S',)
+    logging.getLogger().setLevel(set_log_level(args.silent, args.verbose))
+
+    # Check that intput fasta and blast_dir exists
+    if not os.path.exists(args.fasta):
+        logging.error(f"Input fasta ({args.fasta}) does not exist, please verify and try again")
+        sys.exit(1)
+    if not os.path.exists(args.blastdir):
+        logging.error(f"Input BLAST directory ({args.blastdir}) does not exist, please verify and try again")
+        sys.exit(1)
+    if not os.path.exists(f"{args.blastdir}/neisseria_schemes.json"):
+        logging.error(f"Unable to locate Neisseria schemes ({args.blastdir}/neisseria_schemes.json), BLAST DBs might need rebuild")
+        sys.exit(1)
+
+    # Check if outdir exists
+    prefix = args.prefix if args.prefix else os.path.basename(args.fasta)
+    outdir = os.path.abspath(os.path.expanduser(args.outdir))
+    outdir = f"{outdir}/{prefix}"
+    if os.path.isdir(args.outdir):
+        if args.force:
+            logging.info(f"Found --force, removing existing {outdir}")
+            execute(f"rm -rf {outdir}")
         else:
-            species_info = {}
-            with open(args["species"]) as f:
-                temp_species_dict = json.load(f)
-            for assembly_file in temp_species_dict:
-                assembly_file = assembly_file.replace(".fasta","").replace(".fna","")
-                species = temp_species_dict[assembly_file]["mash_results"]["species"]
-                species_info[assembly_file] = species
-        file_dict = {x.replace(".fasta","").replace(".fna",""):x for x in os.listdir(working_dir) if os.path.splitext(x)[1] in ['.fasta', '.fna']}
-    elif isinstance(args["xlsx"],str):
-        file_frame = pd.read_excel(args['xlsx'])
-        if 'Filename' not in file_frame:
-            raise ValueError("Excel frame must have Filename column")
-        if "Species" not in file_frame:
-            raise ValueError("Excel files must have Species column -- for now")
-        if "Lab_ID" not in file_frame:
-            file_frame["Lab_ID"] = file_frame.Filename.apply(os.path.basename).str.replace(".fasta","").str.replace(".fna","")
-        good_files = file_frame.Filename.apply(os.path.isfile)
-        good_species = file_frame.Species.isin([x for x in species_dict])
-        good_records = good_files & good_species
-        if sum(good_records) == 0:
-            print("Excel file did not have proper filenames and species names. Aborting")
-            print("\t{} valid filenames".format(sum(good_files)))
-            print("\t{} valid species names".format(sum(good_species)))
-            sys.exit()
-        elif sum(good_records) < len(file_frame):
-            print("Warning: Not every record has valid filename and species. Proceeding with {}/{}".format(sum(good_records),len(file_frame)))
-        ##TODO: check that Lab_ID are unique
-        file_dict = file_frame.set_index("Lab_ID").Filename.to_dict()
-        #species_lookup = file_frame[good_records].set_index("Filename")
-        species_info = file_frame.set_index("Lab_ID").Species.to_dict() 
-        working_dir = None
+            logging.error(f"Output Directory {outdir} aleady exists, please use --force to overwrite")
+            sys.exit(1)
+    execute(f"mkdir -p {outdir}")
 
+    ## Use provided species or guess using Mash
+    mash_results = {}
+    if args.species:
+        mash_results[args.fasta] = "Used --species {args.species} for analysis"
+        species = species
+    else:
+        mash_results = obtain_species(args.fasta, args.threads)
+        species = mash_results[args.fasta]['mash_results']['species']
+
+    if "Neisseria" in species:
+        species = "neisseria"
+
+    if species not in species_dict:
+        logging.warn(f"Unknown species ({species}). To continue, please use --species")
+        sys.exit(1)
+    
 
     ### Get pubMLST schemes and store in scheme_data dict ###
-    scheme_data = get_schemes()
-    print("#######################################################################################################")
-    print("Step 1. BLASTing against PubMLST DBs")
-    ### Setup results variables ### 
+    logging.info("Step 1. BLASTing against PubMLST DBs")
+    scheme_data = None
     results_dict = {}
-    #final_results_dict = {}
     seq_dict = OrderedDict()
+    seq_dict[prefix] = {"species": species, "contigs": {}, "file_name": args.fasta}
 
-    ### Enable Backwards Compatability ###
-    if os.path.isdir(os.path.join(OUTPUT_DIR,"json")):
-        for existing_json in os.listdir(os.path.join(OUTPUT_DIR,"json")):
-            existing_json_path = os.path.join(OUTPUT_DIR, "json", existing_json)
-            if ".fasta" in existing_json:
-                new_name = existing_json.replace(".fasta","")
-                new_name_path = os.path.join(OUTPUT_DIR,"json",new_name)
-                os.rename(existing_json_path,new_name_path)
+    # Read in all Neisseria schemes
+    logging.debug(f"Reading {args.blastdir}/neisseria_schemes.json")
+    with open(f"{args.blastdir}/neisseria_schemes.json", "rt") as json_fh:
+        scheme_data = json.load(json_fh)
 
-    #for existing_json in         
-    existing_results = []
-    calculated_results = []
-    if not os.path.isdir(os.path.join(OUTPUT_DIR,"json")):
-        os.system("mkdir {}".format(os.path.join(OUTPUT_DIR,"json")))
-    else:
-        if not args["force"]:
-            if not args["jdebug"] and not args["fdebug"]:
-                for existing_json in os.listdir(os.path.join(OUTPUT_DIR,"json")):
-                    if "raw" in existing_json:
-                        existing_json = existing_json.split("_raw")[0]
-                        existing_results.append(existing_json)
-    for in_file, file_name in file_dict.items():
-        if isinstance(working_dir,str):
-            file_dir = working_dir #filename is basename of files within this directory
-        else:
-            file_dir = os.path.dirname(file_name) #filename is full file path
-            file_name = os.path.basename(file_name)
-        seq_dict[in_file] = {"species":"","contigs":{},"file_name":file_name}
-        species = species_info[in_file]
-        if "Neisseria" in species:
-            species = "neisseria"
-        ## If DB doesn't exist for species identified, treat as neisseria
-        if species in species_dict:
-            blast_species = species_dict[species]
-        else:
-            print("Unknown species ({}). Using neisseria database".format(species))
-            #species = "neisseria"
-            blast_species = species_dict["neisseria"]
-        blast_dir = os.path.join(main_blast_dir,blast_species)     
-        with open(os.path.join(file_dir,file_name),"rU") as f:
-            for seq_record in SeqIO.parse(f,"fasta"):
-                seq_id = seq_record.id
-                if seq_id not in seq_dict[in_file]["contigs"]:
-                    seq_dict[in_file]["contigs"][seq_id] = {}
-                seq = seq_record.seq
-                length = len(seq)
-                seq_dict[in_file]["contigs"][seq_id]["seq"] = seq
-                seq_dict[in_file]["contigs"][seq_id]["file_name"] = in_file
-                seq_dict[in_file]["contigs"][seq_id]["length"] = length
-                #seq_dict[in_file]["species"] = blast_species
-                seq_dict[in_file]["species"] = species
-                seq_dict[in_file]["contigs"][seq_id]["alleles"] = {}
-        if not args["jdebug"] and not args["fdebug"]:
-            if in_file in existing_results:
-                print("Found existing BLAST results for {}, using those results (use -fr flag to force overwriting of results)".format(in_file))
-            elif in_file in calculated_results:
-                print("Found BLAST results with same file basename. The basename must change to run in same batch: {}".format(in_file)) #I don't expect to encounter this error, so I'm not providing any easy fix -ACR
-            else:
-                final_dict = run_blast(file_dir,file_name,args["threads"],blast_dir,seq_dict,in_file)
-                with open(os.path.join(OUTPUT_DIR,"json","{}_raw_results.json".format(in_file)),"w") as f:
-                    json.dump(final_dict,f)
+    # Read input FASTA file
+    open_fh = gzip.open if args.fasta.endswith("gz") else open
+    with open_fh(args.fasta, "rt") as fh:
+        logging.debug(f"Reading input FASTA ({args.fasta})")
+        for seq_record in SeqIO.parse(fh,"fasta"):
+            seq_id = seq_record.id
+            if seq_id not in seq_dict[prefix]["contigs"]:
+                seq_dict[prefix]["contigs"][seq_id] = {}
+            seq = seq_record.seq
+            length = len(seq)
+            seq_dict[prefix]["contigs"][seq_id]["seq"] = seq
+            seq_dict[prefix]["contigs"][seq_id]["file_name"] = args.fasta
+            seq_dict[prefix]["contigs"][seq_id]["length"] = length
+            seq_dict[prefix]["contigs"][seq_id]["alleles"] = {}
 
-    raw_json_files = [x for x in os.listdir(os.path.join(OUTPUT_DIR,"json")) if "raw" in x]
-    print("Evaluating {} raw json files".format(len(raw_json_files)))
-    for raw_json_file in raw_json_files:
-        if "raw" in raw_json_file:
-            in_file_path = os.path.join(OUTPUT_DIR,"json",raw_json_file)
-            with open(in_file_path) as f:
-                temp_dict = json.load(f)
-                replace = False
-                for query in temp_dict:
-                    if "contigs" not in temp_dict[query]:
-                        temp_species = ""
-                        replace = True
-                        for contig in temp_dict[query]:
-                            for allele in temp_dict[query][contig]:
-                                if "NEIS" in allele:
-                                    temp_species = "neisseria"
-                                    break
-                                elif "HAEM" in allele:
-                                    temp_species = "hinfluenzae"
-                                    break
-                        contig_data = temp_dict[query]
-                        temp_dict[query] = {"contigs":contig_data,"species":temp_species}
-                    if ".fasta" in query or ".fna" in query:
-                        temp_dict[query]["file_name"] = query
-                        old_query = query
-                        query = query.replace(".fasta","").replace(".fna","")
-                        temp_dict[query] = temp_dict.pop(old_query)
-                results_dict.update(temp_dict)
-            if replace:
-                with open(in_file_path,"w") as f:
-                    json.dump(temp_dict,f)
+    final_dict = run_blast(args.fasta, prefix, args.threads, f"{args.blastdir}/{species_dict[species]}", seq_dict)
+    raw_blast_results = f"{outdir}/raw-blast-results.json"
+    with open(raw_blast_results,"wt") as fh:
+        json.dump(final_dict, fh)
+
+    logging.info("Evaluating BLAST Results")
+    with open(raw_blast_results, "rt") as fh:
+        temp_dict = json.load(fh)
+        replace_dict = temp_dict
+        replace = False
+        for query in list(temp_dict):
+            if "contigs" not in temp_dict[query]:
+                temp_species = ""
+                replace = True
+                for contig in temp_dict[query]:
+                    for allele in temp_dict[query][contig]:
+                        if "NEIS" in allele:
+                            temp_species = "neisseria"
+                            break
+                        elif "HAEM" in allele:
+                            temp_species = "hinfluenzae"
+                            break
+                temp_dict[query] = {"contigs":temp_dict[query], "species":temp_species}
+        results_dict.update(temp_dict)
+        if replace:
+            with open(raw_blast_results,"wt") as json_fh:
+                json.dump(temp_dict, json_fh)
 
     ### Analyze results in results dict ###
-    print("#######################################################################################################")
-    print("Step 2. Parsing BLAST results")
-    if args["jdebug"]:
-        for in_file in os.listdir(args["jdebug"]):
-            if "raw" in in_file:
-                if ".fasta" in raw_json_file:
-                    raw_json_file = raw_json_file.replace(".fasta","")
-                in_file_path = os.path.join(args["jdebug"],in_file)
-                with open(in_file_path) as f:
-                    temp_dict = json.load(f)
-                    replace = False
-                    for query in temp_dict:
-                        if "contigs" not in temp_dict[query]:
-                            temp_species = ""
-                            replace = True
-                            for contig in temp_dict[query]:
-                                for allele in temp_dict[query][contig]:
-                                    if "NEIS" in allele:
-                                        temp_species = "neisseria"
-                                        break
-                                    elif "HAEM" in allele:
-                                        temp_species = "hinfluenzae"
-                                        break
-                            contig_data = temp_dict[query]
-                            temp_dict[query] = {"contigs":contig_data,"species":temp_species}
-                        if ".fasta" in query or ".fna" in query:
-                            temp_dict[query]["file_name"] = query
-                            old_query = query
-                            query = query.replace(".fasta","").replace(".fna","")
-                            temp_dict[query] = temp_dict.pop(old_query)
-                    results_dict.update(temp_dict)
-                if replace:
-                    with open(in_file_path,"w") as f:
-                        json.dump(temp_dict,f)
-    final_results_dict={}
-    if args["fdebug"]:
-        for in_file in os.listdir(args["fdebug"]):
-            if "final" in in_file:
-                if ".fasta" in in_file:
-                    in_file = in_file.replace(".fasta","")
-                in_file_path = os.path.join(args["fdebug"],in_file)
-                with open(in_file_path) as f:
-                    temp_dict = json.load(f)
-                    replace = False
-                    for query in temp_dict:
-                        if "contigs" not in temp_dict[query]:
-                            temp_species = ""
-                            replace = True
-                            for contig in temp_dict[query]:
-                                for allele in temp_dict[query][contig]:
-                                    if "NEIS" in allele:
-                                        temp_species = "neisseria"
-                                        break
-                                    elif "HAEM" in allele:
-                                        temp_species = "hinfluenzae"
-                                        break
-                            contig_data = temp_dict[query]
-                            temp_dict[query] = {"contigs":contig_data,"species":temp_species}
-                        if ".fasta" in query or ".fna" in query:
-                            temp_dict[query]["file_name"] = query
-                            old_query = query
-                            query = query.replace(".fasta","").replace(".fna","")
-                            temp_dict[query] = temp_dict.pop(old_query)
-                    final_results_dict.update(temp_dict)
-                if replace:
-                    with open(in_file_path,"w") as f:
-                        json.dump(temp_dict,f)
-    else:
-        final_results_dict,internal_stop_dict = analyze_results(results_dict,args["threads"],internal_stop)
-        if internal_stop:
-            with open(os.path.join(OUTPUT_DIR,"internal_stops.tab"),"w") as f:
-                f.write("ID\tGene\tLength\tInternal_stops\n")
-                for in_file in internal_stop_dict:
-                    for gene in internal_stop_dict[in_file]:
-                        length = str(internal_stop_dict[in_file][gene]["length"])
-                        stops = ",".join(internal_stop_dict[in_file][gene]["stops"])
-                        f.write("{}\t{}\t{}\t{}\n".format(in_file,gene,length,stops))
-    print("#######################################################################################################")
-    print("Step 3. Running analyses")
-    for in_file in final_results_dict:
-        with open(os.path.join(OUTPUT_DIR,"json","{}_final_results.json".format(in_file.replace(".fasta","").replace(".fna",""))),"w") as f:
-            temp_dict = {}
-            temp_dict[in_file] = final_results_dict[in_file]
-            json.dump(temp_dict,f)
+    logging.info("Step 2. Parsing BLAST results")
+    final_results_dict, internal_stop_dict = analyze_results(results_dict, args.threads, args.internalstop)
+    if args.internalstop:
+        with open(f"{outdir}/internal_stops.tab","wt") as fh:
+            fh.write("ID\tGene\tLength\tInternal_stops\n")
+            for in_file in internal_stop_dict:
+                for gene in internal_stop_dict[in_file]:
+                    length = str(internal_stop_dict[in_file][gene]["length"])
+                    stops = ",".join(internal_stop_dict[in_file][gene]["stops"])
+                    fh.write(f"{in_file}\t{gene}\t{length}\t{stops}\n")
 
-    ### Prepare json and gff directories if they do not exist ###
-    if not os.path.isdir(os.path.join(OUTPUT_DIR,"gff")):
-        os.system("mkdir {}".format(os.path.join(OUTPUT_DIR,"gff")))
+    ### Write outputs ###
+    logging.info("Step 3. Writing outputs")
+    create_gff(f"{outdir}/{prefix}.gff", final_results_dict, scheme_data, seq_dict)
+    generate_sg_predictions(final_results_dict, outdir)
 
-    if args["char"]:
-        if not os.path.isdir(os.path.join(OUTPUT_DIR,"summary")):
-            os.system("mkdir {}".format(os.path.join(OUTPUT_DIR,"summary")))
-        frequencies = calc_frequencies(final_results_dict,char_data)
-        compare_alleles(final_results_dict,frequencies)
-    if args["serogroup"]:
-        if not os.path.isdir(os.path.join(OUTPUT_DIR,"serogroup")):
-            os.system("mkdir {}".format(os.path.join(OUTPUT_DIR,"serogroup")))
-        generate_sg_predictions(final_results_dict)
-    if args["promoters"]:
-        if not os.path.isdir(os.path.join(OUTPUT_DIR,"igr")):
-            os.system("mkdir {}".format(os.path.join(OUTPUT_DIR,"igr")))
-        find_promoters(final_results_dict,seq_dict)
-    if args["fastas"]:
-        if not os.path.isdir(os.path.join(OUTPUT_DIR,"feature_fastas")):
-            os.system("mkdir {}".format(os.path.join(OUTPUT_DIR,"feature_fastas")))
-        output_fastas(final_results_dict)
+    if args.scheme:
+        count_loci_per_scheme(scheme_data, final_results_dict, outdir)
 
-    ### Create gff and JSON ###
-    print("Creating GFF for pubMLST results")
-    create_gff(final_results_dict,scheme_data,seq_dict)
+    if args.allele_matrix:
+        create_allele_matrix(final_results_dict, outdir)
 
-    if args["scheme"]:
-        count_loci_per_scheme(scheme_data,final_results_dict)
+    if args.output_fastas:
+        execute(f"mkdir {outdir}/feature_fastas")
+        output_fastas(final_results_dict, outdir)
 
-    if args["allele_matrix"]:
-        create_allele_matrix(final_results_dict)
+    with open(f"{outdir}/final-results.json","wt") as fh:
+        json.dump(final_results_dict[prefix], fh)
 
-
-if __name__ == "__main__":
-    main()
-
+    with open(f"{outdir}/mash-species.json", "wt") as json_fh:
+        json.dump(mash_results, json_fh)
