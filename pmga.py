@@ -1,28 +1,48 @@
 #!/usr/bin/env python3
-### Import Modules ###
+"""
+usage: pmga [-h] [--prefix STR] [--blastdir STR] [-is] [-fa] [-sc] [-a] [--species STR] [-t INT] [-o STR]
+            [--force] [--verbose] [--silent] [--version]
+            FASTA
+
+pmga - Serotyping, serotyping and MLST of all Neisseria species and Haemophilus influenzae
+
+positional arguments:
+  FASTA                 Input FASTA file to analyze
+
+options:
+  -h, --help            show this help message and exit
+  --prefix STR          Prefix for outputs (Default: Use basename of input FASTA file)
+  --blastdir STR        Directory containing BLAST DBs built by pmga-build (Default: ./pubmlst_dbs_all
+
+Additional output parameters:
+  -is, --internalstop   Output internal stop locations in capsule genes
+  -fa, --output_fastas  Output identified gene sequences as FASTAs
+  -sc, --scheme         Produce tab-delimited count of loci identified for each gene across all tested genomes
+  -a, --allele_matrix   Produce tab-delimited matrix containing all alleles identified per tested genome
+
+Additional Options:
+  --species STR         Use this as the input species (Default: use Mash distance). Available Choices:
+                        neisseria, hinfluenzae
+  -t INT, --threads INT
+                        Number of cores to use (default=1)
+  -o STR, --outdir STR  Directory to output results to (Default: ./pmga)
+  --force               Force overwrite existing output file
+  --verbose             Print debug related text.
+  --silent              Only critical errors will be printed.
+  --version             show program's version number and exit
+"""
+import json
 import logging
 import os
+import re
 import requests
+import sqlite3
 import sys
+import time
 from Bio import SeqIO
 from Bio.Seq import Seq
-
-import re
-import json
-from collections import OrderedDict
-import operator
-import csv
-import pprint as pp
-import string
-import locale
-import time
-import tempfile
-
-import math
-import sqlite3
 from multiprocessing import Pool, Process, Queue
 from subprocess import *
-import pandas as pd
 
 PROGRAM = "pmga"
 DESCRIPTION = "Serotyping, serotyping and MLST of all Neisseria species and Haemophilus influenzae"
@@ -670,7 +690,6 @@ def analyze_results(results_dict, threads, internal_stop):
                 if (q % 500) == 0:
                         logging.info("Completed {} so far".format(str(q)))
                 """
-
 
     logging.info("Compiling results")
     for in_file in results_dict:
@@ -1484,6 +1503,7 @@ def output_fastas(final_results_dict, outdir):
 
 #BMScan code - skips if BMScan Json provided
 def obtain_species(input_fasta, threads):
+    import tempfile
     final_sp_dict = {}
     temp_dir = tempfile.mkdtemp()
     sketch_info={}

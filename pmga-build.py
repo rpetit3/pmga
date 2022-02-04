@@ -2,7 +2,7 @@
 """
 usage: pmga-build [-h] [--outdir STR] [--force] [--silent] [--debug] [--version]
 
-pmga-build (v0.0.1) - Script for creating local BlastDBs from PubMLST alleles
+pmga-build - Script for creating local BlastDBs from PubMLST alleles
 
 optional arguments:
   -h, --help    show this help message and exit
@@ -16,7 +16,7 @@ import logging
 import os
 import sys
 
-VERSION = "0.0.1"
+VERSION = "3.0.1"
 PROGRAM = "pmga-build"
 DESCRIPTION = "Script for creating local BlastDBs from PubMLST alleles"
 STDOUT = 11
