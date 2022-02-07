@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-usage: pmga [-h] [--prefix STR] [--blastdir STR] [-is] [-fa] [-sc] [-a] [--species STR] [-t INT] [-o STR]
-            [--force] [--verbose] [--silent] [--version]
+usage: pmga [-h] [--prefix STR] [--blastdir STR] [--species STR] [-t INT] [-o STR] [--force] [--verbose]
+            [--silent] [--version]
             FASTA
 
 pmga - Serotyping, serotyping and MLST of all Neisseria species and Haemophilus influenzae
@@ -13,12 +13,6 @@ options:
   -h, --help            show this help message and exit
   --prefix STR          Prefix for outputs (Default: Use basename of input FASTA file)
   --blastdir STR        Directory containing BLAST DBs built by pmga-build (Default: ./pubmlst_dbs_all
-
-Additional output parameters:
-  -is, --internalstop   Output internal stop locations in capsule genes
-  -fa, --output_fastas  Output identified gene sequences as FASTAs
-  -sc, --scheme         Produce tab-delimited count of loci identified for each gene across all tested genomes
-  -a, --allele_matrix   Produce tab-delimited matrix containing all alleles identified per tested genome
 
 Additional Options:
   --species STR         Use this as the input species (Default: use Mash distance). Available Choices:
@@ -131,7 +125,7 @@ SG_unique = {"csaD":"A","csaC":"A","csaB":"A","csaA":"A",
                 "csxA":"X","csxB":"X","csxC":"X"}
             
 #Change BMScan species names to PubMLST db name
-species_dict = {"neisseria": "neisseria", "hinfluenzae": "hinfluenzae", "Haemophilus influenzae": "hinfluenzae"}
+species_dict = {"Neisseria": "neisseria", "neisseria": "neisseria", "hinfluenzae": "hinfluenzae", "Haemophilus influenzae": "hinfluenzae"}
 
 
 def set_log_level(error, debug):
@@ -841,9 +835,8 @@ def create_gff(gff_out, results_dict, scheme_data, seq_dict):
                         cov = cov*100.0
                         text.append(f"{contig}\tpubMLST\t{region_type}\t{start}\t{stop}\t.\t{strand}\t0\tID={contig}_{count};gene={allele_name};allele_id={allele_id};inference=pubmlst;locus_tag={contig}_{count};flags={flags};product={annotations};scheme={scheme_type}")
                         count+=1
-                header_info += "##sequence-region {} 1 {}\n".format(contig,str(seq_length))
-                fasta_text += ">{}\n".format(contig)
-                fasta_text += "{}\n".format(sequence)
+                header_info += f"##sequence-region {contig} 1 {seq_length}\n"
+                fasta_text += f">{contig}\n{sequence}\n"
             f.write("##gff-version 3\n")
             f.write(header_info)
             f.write("\n".join(text))
@@ -1024,32 +1017,24 @@ def compare_alleles(final_results_dict,frequencies):
                     f.write("\t{}".format(str(freq)))
             f.write("\n")
 
-def generate_sg_predictions(data, outdir):
-    neisseria_set = {}
-    sg_results = {"Serogroup":[],"Serotype":[]}
-    hi_set = {}
-    for query in sorted(data):
-        species = species_dict[data[query]["species"]]
-        if species == "neisseria":
-            neisseria_set[query] = data[query]
-        elif species == "hinfluenzae":
-            hi_set[query] = data[query]
 
+def generate_sg_predictions(out_file, data, outdir, species):
     ## Neisseria SG Prediction
-    if neisseria_set:
-        with open(f"{outdir}/serogroup-predictions.txt", "wt") as f:
-            f.write("Query\tSG\tGenes_Present\tNotes\n")
-            for query in sorted(neisseria_set):
+    sg_results = {"Serogroup":[],"Serotype":[]}
+    with open(out_file, "wt") as f:
+        f.write("sample\tspecies\tprediction\tgenes_present\tnotes\n")
+        for query in sorted(data):
+            if species == "neisseria":
                 sg_dict = {"sample_name":query,"predicted_sg":"","baseSG":"","genes":[]}
                 found_result = False
                 partial_set = {}
                 seen_genes = {}
-                for contig in neisseria_set[query]["contigs"]:
+                for contig in data[query]["contigs"]:
                     partial_set[contig] = {}
-                    for allele in sorted(neisseria_set[query]["contigs"][contig]):
+                    for allele in sorted(data[query]["contigs"][contig]):
                         partial_set[contig][allele] = []
-                        if neisseria_set[query]["contigs"][contig][allele]:
-                            for hit in neisseria_set[query]["contigs"][contig][allele]:
+                        if data[query]["contigs"][contig][allele]:
+                            for hit in data[query]["contigs"][contig][allele]:
                                 allele_name = hit["allele_name"]
                                 for sg in serogroups:
                                     if sg not in seen_genes:
@@ -1077,8 +1062,8 @@ def generate_sg_predictions(data, outdir):
                             partial_hit_start = int(partial_hit["qstart"])
                             partial_hit_stop = int(partial_hit["qend"])
                             partial_hit_name = partial_hit["allele_name"]
-                            for allele in neisseria_set[query]["contigs"][contig]:
-                                for hit in neisseria_set[query]["contigs"][contig][allele]:
+                            for allele in data[query]["contigs"][contig]:
+                                for hit in data[query]["contigs"][contig][allele]:
                                     hit_type = hit["region_type"]
                                     if hit_type == "ISE":
                                         hit_start = int(hit["qstart"])
@@ -1101,8 +1086,6 @@ def generate_sg_predictions(data, outdir):
                 matching_num_sg = 0
                 unique_sg = False
                 multiple_top_hits = False
-                #print(query,found_result)
-                #pp.pprint(seen_genes)
                 current_sg = ""
                 first_sg = True
                 contamination = False
@@ -1184,7 +1167,6 @@ def generate_sg_predictions(data, outdir):
                             allele_name = hit["allele_name"]
                             if "sequence" in hit:
                                 hit.pop("sequence")
-                            sg_dict["genes"].append(hit)
                             partiality = hit["partial"]
                             flag_list = hit["flags"]
                             if "disrupted" in hit:
@@ -1263,26 +1245,22 @@ def generate_sg_predictions(data, outdir):
                         final_sg = "Inconclusive" 
 
                 final_genes = ",".join(sorted(current_gene_list))
-                result_line = "{}\t{}\t{}\t{}\n".format(query,final_sg,final_genes,final_notes)
                 sg_dict["predicted_sg"] = final_sg
                 sg_dict["baseSG"] = top_sg
                 sg_results["Serogroup"].append(sg_dict)
-                f.write(result_line)
+                f.write(f"{query}\t{species}_serogroup\t{final_sg}\t{final_genes}\t{final_notes}\n")
 
-    if hi_set:
-        with open(f"{outdir}/serotype-predictions.txt", "wt") as f:
-            f.write("Query\tST\tGenes_Present\tNotes\n")
-            for query in sorted(hi_set):
+            if species == "hinfluenzae":
                 st_dict = {"sample_name":query,"predicted_st":"","baseST":"","genes":[]}
                 found_result = False
                 partial_set = {}
                 seen_genes = {}
-                for contig in hi_set[query]["contigs"]:
+                for contig in data[query]["contigs"]:
                     partial_set[contig] = {}
-                    for allele in sorted(hi_set[query]["contigs"][contig]):
+                    for allele in sorted(data[query]["contigs"][contig]):
                         partial_set[contig][allele] = []
-                        if hi_set[query]["contigs"][contig][allele]:
-                            for hit in hi_set[query]["contigs"][contig][allele]:
+                        if data[query]["contigs"][contig][allele]:
+                            for hit in data[query]["contigs"][contig][allele]:
                                 allele_name = hit["allele_name"]
                                 for st in serotypes:
                                     if st not in seen_genes:
@@ -1306,8 +1284,8 @@ def generate_sg_predictions(data, outdir):
                             partial_hit_start = int(partial_hit["qstart"])
                             partial_hit_stop = int(partial_hit["qend"])
                             partial_hit_name = partial_hit["allele_name"]
-                            for allele in hi_set[query]["contigs"][contig]:
-                                for hit in hi_set[query]["contigs"][contig][allele]:
+                            for allele in data[query]["contigs"][contig]:
+                                for hit in data[query]["contigs"][contig][allele]:
                                     hit_type = hit["region_type"]
                                     if hit_type == "ISE":
                                         hit_start = int(hit["qstart"])
@@ -1464,45 +1442,12 @@ def generate_sg_predictions(data, outdir):
                     else:
                         final_notes = ",".join(sorted(notes))
                 final_genes = ",".join(sorted(current_gene_list))
-                result_line = "{}\t{}\t{}\t{}\n".format(query,final_st,final_genes,final_notes)
                 st_dict["predicted_st"] = final_st
                 st_dict["baseST"] = final_st
                 sg_results["Serotype"].append(st_dict)
-                f.write(result_line)
-    with open(f"{outdir}/serogroup-results.json","wt") as f:
-        json.dump(sg_results,f)
+                f.write(f"{query}\t{species}_serotype\t{final_st}\t{final_genes}\t{final_notes}\n")
 
 
-def output_fastas(final_results_dict, outdir):
-    for query in final_results_dict:
-        type_dict = {}
-        query_outdir = f"{outdir}/feature_fastas/{query}"
-        if not os.path.isdir(query_outdir):
-            execute(f"mkdir {query_outdir}")
-
-        for contig in final_results_dict[query]["contigs"]:
-            if contig == "species":
-                continue
-            for allele in final_results_dict[query]["contigs"][contig]:
-                for hit in final_results_dict[query]["contigs"][contig][allele]:
-                    region_type = hit["region_type"]
-                    if region_type not in type_dict:
-                        type_dict[region_type] = {}
-                    allele_name = hit["allele_name"]
-                    allele_id = hit["allele_id"]
-                    sequence = hit["qseq"]
-                    allele_identifier = allele_name+"_"+allele_id
-                    if allele_identifier not in type_dict[region_type]:
-                        type_dict[region_type][allele_identifier] = sequence
-
-        for region_type in type_dict:
-            with open(f"{query_outdir}/{region_type}.fasta","wt") as fh:
-                for allele in type_dict[region_type]:
-                    fh.write(f">{allele}\n")
-                    fh.write(f"{type_dict[region_type][allele]}\n")
-
-
-#BMScan code - skips if BMScan Json provided
 def obtain_species(input_fasta, threads):
     import tempfile
     final_sp_dict = {}
@@ -1654,7 +1599,7 @@ def obtain_species(input_fasta, threads):
     mash_results = mash_dist(sketch_path["path"],MASH_DB,threads,False,thresholds)
     return create_json(mash_results, thresholds)
 
-def count_loci_per_scheme(scheme_data, results_dict, outdir):
+def count_loci_per_scheme(output_file, scheme_data, results_dict, outdir):
     scheme_counter = {}
     schemes_seen = []
     loci_counts = {}
@@ -1679,7 +1624,7 @@ def count_loci_per_scheme(scheme_data, results_dict, outdir):
                                     if allele not in loci_counts[in_file][scheme]:
                                         loci_counts[in_file][scheme].append(allele)
     max_length = len(scheme_counter)
-    with open(f"{outdir}/loci-counts.txt","wt") as f:
+    with open(output_file,"wt") as f:
         f.write("Lab_ID\t")
         for i in range(0,max_length):
             f.write("{}_{}\t".format(scheme_counter[i].replace(" ","_"),len(scheme_data[scheme_counter[i]])))
@@ -1693,7 +1638,7 @@ def count_loci_per_scheme(scheme_data, results_dict, outdir):
                     f.write("0\t")
             f.write("\n")
 
-def create_allele_matrix(results_dict, outdir):
+def create_allele_matrix(output_file, results_dict, outdir):
     genes_seen = []
     genes_counter = {}
     allele_matrix = {}
@@ -1728,7 +1673,7 @@ def create_allele_matrix(results_dict, outdir):
                                 if allele_name not in allele_matrix[in_file]:
                                     allele_matrix[in_file][allele_name] = allele_id
     max_length = len(genes_counter)
-    with open(f"{outdir}/allele-matrix.txt","wt") as f:
+    with open(output_file,"wt") as f:
         f.write("Lab_ID\t")
         for i in range(0,max_length):
             f.write("{}\t".format(genes_counter[i]))
@@ -1745,7 +1690,6 @@ def create_allele_matrix(results_dict, outdir):
 
 if __name__ == "__main__":
     import argparse as ap
-    import gzip
     import json
     from collections import OrderedDict
 
@@ -1764,16 +1708,6 @@ if __name__ == "__main__":
                         help="Prefix for outputs (Default: Use basename of input FASTA file)")
     parser.add_argument('--blastdir', metavar="STR", type=str, default="./pubmlst_dbs_all",
                         help="Directory containing BLAST DBs built by pmga-build (Default: ./pubmlst_dbs_all")
-
-    group2 = parser.add_argument_group('Additional output parameters')
-    group2.add_argument('-is', '--internalstop', action="store_true",
-                        help="Output internal stop locations in capsule genes")
-    group2.add_argument('-fa', '--output_fastas', action="store_true",
-                        help="Output identified gene sequences as FASTAs")
-    group2.add_argument('-sc', '--scheme', action="store_true",
-                        help="Produce tab-delimited count of loci identified for each gene across all tested genomes")
-    group2.add_argument('-a', '--allele_matrix', action="store_true",
-                        help="Produce tab-delimited matrix containing all alleles identified per tested genome")
 
     group3 = parser.add_argument_group('Additional Options')
     group3.add_argument('--species', metavar="STR", type=str, choices=["neisseria", "hinfluenzae"],
@@ -1815,9 +1749,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # Check if outdir exists
-    prefix = args.prefix if args.prefix else os.path.basename(args.fasta)
+    prefix = args.prefix if args.prefix else os.path.basename(args.fasta).replace(".fa", "").replace(".fasta","").replace(".fna","")
     outdir = os.path.abspath(os.path.expanduser(args.outdir))
-    outdir = f"{outdir}/{prefix}"
     if os.path.isdir(args.outdir):
         if args.force:
             logging.info(f"Found --force, removing existing {outdir}")
@@ -1828,13 +1761,13 @@ if __name__ == "__main__":
     execute(f"mkdir -p {outdir}")
 
     ## Use provided species or guess using Mash
-    mash_results = {}
-    if args.species:
-        mash_results[args.fasta] = "Used --species {args.species} for analysis"
-        species = species
+    species = args.species
+    if species:
+        logging.info("Using species: {species}")
     else:
         mash_results = obtain_species(args.fasta, args.threads)
         species = mash_results[args.fasta]['mash_results']['species']
+        logging.info("Using Mash predicted species: {species}")
 
     if "Neisseria" in species:
         species = "neisseria"
@@ -1842,7 +1775,6 @@ if __name__ == "__main__":
     if species not in species_dict:
         logging.warn(f"Unknown species ({species}). To continue, please use --species")
         sys.exit(1)
-    
 
     ### Get pubMLST schemes and store in scheme_data dict ###
     logging.info("Step 1. BLASTing against PubMLST DBs")
@@ -1857,8 +1789,7 @@ if __name__ == "__main__":
         scheme_data = json.load(json_fh)
 
     # Read input FASTA file
-    open_fh = gzip.open if args.fasta.endswith("gz") else open
-    with open_fh(args.fasta, "rt") as fh:
+    with open(args.fasta, "rt") as fh:
         logging.debug(f"Reading input FASTA ({args.fasta})")
         for seq_record in SeqIO.parse(fh,"fasta"):
             seq_id = seq_record.id
@@ -1872,62 +1803,51 @@ if __name__ == "__main__":
             seq_dict[prefix]["contigs"][seq_id]["alleles"] = {}
 
     final_dict = run_blast(args.fasta, prefix, args.threads, f"{args.blastdir}/{species_dict[species]}", seq_dict)
-    raw_blast_results = f"{outdir}/raw-blast-results.json"
-    with open(raw_blast_results,"wt") as fh:
-        json.dump(final_dict, fh)
 
     logging.info("Evaluating BLAST Results")
-    with open(raw_blast_results, "rt") as fh:
-        temp_dict = json.load(fh)
-        replace_dict = temp_dict
-        replace = False
-        for query in list(temp_dict):
-            if "contigs" not in temp_dict[query]:
-                temp_species = ""
-                replace = True
-                for contig in temp_dict[query]:
-                    for allele in temp_dict[query][contig]:
-                        if "NEIS" in allele:
-                            temp_species = "neisseria"
-                            break
-                        elif "HAEM" in allele:
-                            temp_species = "hinfluenzae"
-                            break
-                temp_dict[query] = {"contigs":temp_dict[query], "species":temp_species}
-        results_dict.update(temp_dict)
-        if replace:
-            with open(raw_blast_results,"wt") as json_fh:
-                json.dump(temp_dict, json_fh)
+    replace_dict = final_dict
+    replace = False
+    for query in list(final_dict):
+        if "contigs" not in final_dict[query]:
+            temp_species = ""
+            replace = True
+            for contig in final_dict[query]:
+                for allele in final_dict[query][contig]:
+                    if "NEIS" in allele:
+                        temp_species = "neisseria"
+                        break
+                    elif "HAEM" in allele:
+                        temp_species = "hinfluenzae"
+                        break
+            final_dict[query] = {"contigs":final_dict[query], "species":temp_species}
+    results_dict.update(final_dict)
+    if replace and (args.blast or args.output_all):
+        with open(raw_blast_results, "wt") as json_fh:
+            json.dump(final_dict, json_fh)
 
     ### Analyze results in results dict ###
     logging.info("Step 2. Parsing BLAST results")
-    final_results_dict, internal_stop_dict = analyze_results(results_dict, args.threads, args.internalstop)
-    if args.internalstop:
-        with open(f"{outdir}/internal_stops.tab","wt") as fh:
-            fh.write("ID\tGene\tLength\tInternal_stops\n")
-            for in_file in internal_stop_dict:
-                for gene in internal_stop_dict[in_file]:
-                    length = str(internal_stop_dict[in_file][gene]["length"])
-                    stops = ",".join(internal_stop_dict[in_file][gene]["stops"])
-                    fh.write(f"{in_file}\t{gene}\t{length}\t{stops}\n")
+    final_results_dict, internal_stop_dict = analyze_results(results_dict, args.threads, False)
 
     ### Write outputs ###
     logging.info("Step 3. Writing outputs")
+    generate_sg_predictions(f"{outdir}/{prefix}.txt", final_results_dict, outdir, species)
+
+    # Create GFF
     create_gff(f"{outdir}/{prefix}.gff", final_results_dict, scheme_data, seq_dict)
-    generate_sg_predictions(final_results_dict, outdir)
+    execute(f"pigz -p {args.threads} --best {outdir}/{prefix}.gff")
 
-    if args.scheme:
-        count_loci_per_scheme(scheme_data, final_results_dict, outdir)
+    # Loci counts
+    count_loci_per_scheme(f"{outdir}/{prefix}-loci-counts.txt", scheme_data, final_results_dict, outdir)
 
-    if args.allele_matrix:
-        create_allele_matrix(final_results_dict, outdir)
+    # Allele Matrix
+    create_allele_matrix(f"{outdir}/{prefix}-allele-matrix.txt", final_results_dict, outdir)
 
-    if args.output_fastas:
-        execute(f"mkdir {outdir}/feature_fastas")
-        output_fastas(final_results_dict, outdir)
-
-    with open(f"{outdir}/final-results.json","wt") as fh:
+    # Blast Results
+    with open(f"{outdir}/{prefix}-blast-raw-results.json", "wt") as fh:
+        json.dump(final_dict, fh)
+    execute(f"pigz -p {args.threads} --best {outdir}/{prefix}-blast-raw-results.json")
+    
+    with open(f"{outdir}/{prefix}-blast-final-results.json","wt") as fh:
         json.dump(final_results_dict[prefix], fh)
-
-    with open(f"{outdir}/mash-species.json", "wt") as json_fh:
-        json.dump(mash_results, json_fh)
+    execute(f"pigz -p {args.threads} --best {outdir}/{prefix}-blast-final-results.json")

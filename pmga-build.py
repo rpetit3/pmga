@@ -96,7 +96,7 @@ if __name__ == "__main__":
         formatter_class=ap.RawDescriptionHelpFormatter
     )
     parser.add_argument('--outdir', metavar="STR", type=str, default="pubmlst_dbs_all",
-                        help='Directory to save BLAST databases to')
+                        help='Directory to save BLAST databases to (Default: ./pubmlst_dbs_all)')
     parser.add_argument('--force', action='store_true', help='Overwrite existing directories.')
     parser.add_argument('--silent', action='store_true',  help='Only critical errors will be printed.')
     parser.add_argument('--debug', action='store_true', help='Print debug related text.')
