@@ -9,7 +9,7 @@ creating PMGA!
 Given I only wanted to run this on the command-line, please keep that in mind if any issues arise.
 I might be able to assist with technical issues, but I cannot help interpret the results
 (e.g. serotype/serogroup). For help with the biological significance of the results, it would
-probably be best to reach out to  [BMGAP](https://github.com/CDCgov/BMGAP).
+probably be best to reach out to [Bacterial Meningitis Genome Analysis Platform (BMGAP)](https://github.com/CDCgov/BMGAP).
 
 I'm sure they would be willing to help!
 
@@ -59,7 +59,8 @@ options:
 ## Running `pmga`
 
 After you have sucessfully build all the necessary BLAST databases, you are now ready to start serotyping/serogrouping
-your *Neisseria* and *H. influenzae* samples! For this you will use `pmga`
+your *Neisseria* and *H. influenzae* samples! `pmga` can be executed on an **uncompressed** FASTA file and will output
+a number of files.
 
 ### `pmga` Usage
 
@@ -107,11 +108,52 @@ is set to the basename of the input file.
 └── <PREFIX>.txt
 ```
 
-| Extension                       | Description                                           |
-|---------------------------------|-------------------------------------------------------|
-| `*-allele-matrix.txt`           | A file with the allele ID for each loci with a hit    |
-| `*-blast-final-results.json.gz` | Filtered BLAST results in JSON format                 |
-| `*-blast-raw-results.json.gz`   | Unfiltered BLAST results in JSON format               |
-| `*-loci-counts.txt`             | A file with the number of hits per loci               |
-| `*.gff.gz`                      | A GFF3 file annotated with the BALST results          |
-| `*.txt`                         | The final predicted serotype/serogroup for the sample |
+| Extension                       | Description                                                                  |
+|---------------------------------|------------------------------------------------------------------------------|
+| `*-allele-matrix.txt`           | A tab-delimitted file with the allele ID for each loci with a hit            |
+| `*-blast-final-results.json.gz` | Filtered BLAST results in JSON format                                        |
+| `*-blast-raw-results.json.gz`   | Unfiltered BLAST results in JSON format                                      |
+| `*-loci-counts.txt`             | A tab-delimitted file with the number of hits per loci                       |
+| `*.gff.gz`                      | A GFF3 file annotated with the BALST results                                 |
+| `*.txt`                         | A tab-delimitted file with final predicted serotype/serogroup for the sample |
+
+#### Example Serotype/Serogroup Output
+
+```{bash}
+sample	species	prediction	genes_present	notes
+GCF_003355215	neisseria_serogroup	B	csb,cssA,cssB,cssC,ctrA,ctrB,ctrC,ctrD,ctrE,ctrF,tex	B backbone: All essential capsule genes intact and present
+```
+
+Above an example of the output predictions, which contains 5 columns. The 5 columns are
+
+| Column        | Description                                                                      |
+|---------------|----------------------------------------------------------------------------------|
+| sample        | The input sample name                                                            |
+| species       | The species of the sample either `neisseria_serogroup` or `hinfluenzae_serotype` |
+| prediction    | The predicted serotype or serogroup                                              |
+| genes_present | A list of genes present in the sample                                            |
+| notes         | Any notes associated with the prediction                                         |
+
+## Citations
+
+If you make use of this tool, please cite the following:
+
+* **[Bacterial Meningitis Genome Analysis Platform (BMGAP)](https://github.com/CDCgov/BMGAP)**  
+An analysis pipeline, ExpressJS API, and ReactJS webapp for the analysis and characterization of bacterial meningitis samples  
+*Buono SA, Kelly RJ, Topaz N, Retchless AC, Silva H, Chen A, Ramos E, Doho G, Khan AN, Okomo-Adhiambo MA, Hu F, Marasini D, Wang X. [Web-Based Genome Analysis of Bacterial Meningitis Pathogens for Public Health Applications Using the Bacterial Meningitis Genomic Analysis Platform (BMGAP).](https://doi.org/10.3389/fgene.2020.601870) Front Genet. 2020 Nov 26;11:601870.*  
+
+* **[BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi)**  
+Basic Local Alignment Search Tool  
+*Camacho C, Coulouris G, Avagyan V, Ma N, Papadopoulos J, Bealer K, Madden TL [BLAST+: architecture and applications](http://dx.doi.org/10.1186/1471-2105-10-421). BMC Bioinformatics 10, 421 (2009)*  
+
+* **[Mash](https://github.com/marbl/Mash)**  
+Fast genome and metagenome distance estimation using MinHash  
+*Ondov BD, Treangen TJ, Melsted P, Mallonee AB, Bergman NH, Koren S, Phillippy AM [Mash: fast genome and metagenome distance estimation using MinHash](http://dx.doi.org/10.1186/s13059-016-0997-x). Genome Biol 17, 132 (2016)*  
+
+* **[Pigz](https://zlib.net/pigz/)**  
+A parallel implementation of gzip for modern multi-processor, multi-core machines.  
+*Adler, M. [pigz: A parallel implementation of gzip for modern multi-processor, multi-core machines.](https://zlib.net/pigz/) Jet Propulsion Laboratory (2015).*  
+
+* **[PubMLST.org](https://pubmlst.org/)**  
+A database housing MLST shemes for many bacterial species.  
+*Jolley KA, Bray JE, Maiden MCJ [Open-access bacterial population genomics: BIGSdb software, the PubMLST.org website and their applications.](http://dx.doi.org/10.12688/wellcomeopenres.14826.1) Wellcome Open Res 3, 124 (2018)*  
