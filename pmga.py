@@ -42,6 +42,10 @@ from subprocess import *
 PROGRAM = "pmga"
 DESCRIPTION = "Serotyping, serotyping and MLST of all Neisseria species and Haemophilus influenzae"
 VERSION = "3.0.1"
+STDOUT = 11
+STDERR = 12
+logging.addLevelName(STDOUT, "STDOUT")
+logging.addLevelName(STDERR, "STDERR")
 
 ### SET UP DB connections and dictionaries ###
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -885,139 +889,6 @@ def run_blast(input_fasta, prefix, threads_to_use, blast_dir, seq_dict):
     return final_dict
 
 
-def compare_alleles(final_results_dict,frequencies):
-    final = {}
-    allele_info = {}
-    for in_file in final_results_dict:
-        for query in final_results_dict[in_file]["contigs"]:
-            if query == "species":
-                continue
-            for allele in final_results_dict[in_file]["contigs"][query]:
-                if allele not in allele_info:
-                    allele_info[allele] = {}
-                for hit in final_results_dict[in_file]["contigs"][query][allele]:
-                    allele_id = hit["allele_id"]
-                    if allele_id not in allele_info[allele]:
-                        allele_info[allele][allele_id] = {}
-                    raw_flags = hit["flags"]
-                    if len(raw_flags) == 1:
-                        flags = raw_flags[0]
-                    elif len(raw_flags) > 1:
-                        flags = ",".join(raw_flags)
-                    else:
-                        flags = "N/A"
-                    if "annotations" in hit:
-                        annotations = hit["annotations"]
-                    else:
-                        annotations = "None found"
-                    allele_info[allele]["annotations"] = annotations
-                    allele_info[allele][allele_id]["flags"] = flags
-
-    for group in frequencies:
-        member_count = frequencies[group]["count"]
-        for allele in frequencies[group]["allele"]:
-            if allele not in final:
-                final[allele] = {"allele_id":{},"non_functional":{},"pres_abs":{}}
-            frequency = float((frequencies[group]["allele"][allele]["non_func_count"])/member_count)
-            final[allele]["non_functional"][group] = frequency
-            frequency_pres = float((frequencies[group]["allele"][allele]["pres_count"])/member_count)
-            final[allele]["pres_abs"][group] = frequency_pres
-            for allele_id in frequencies[group]["allele"][allele]["allele_id"]:
-                flags = allele_info[allele][allele_id]["flags"]
-                annotation = allele_info[allele]["annotations"]
-                frequency_id = float((frequencies[group]["allele"][allele]["allele_id"][allele_id])/member_count)
-                if allele_id not in final[allele]["allele_id"]:
-                    final[allele]["allele_id"][allele_id] = {}
-                final[allele]["allele_id"][allele_id][group] = frequency_id
-    out_path = os.path.join(OUTPUT_DIR,"summary")
-
-    with open(os.path.join(out_path,"allele_frequencies_{}.tab".format(time.time())),"w") as f:
-        f.write("Allele_ID\tFlags\tFunction")
-        groups = {}
-        i=0
-        for group in frequencies:
-            groups[i] = group
-            f.write("\t{}".format(group))
-            i+=1
-        f.write("\n")
-        for allele in final:
-            for allele_id in final[allele]["allele_id"]:
-                if allele not in allele_info:
-                    allele = "'{}".format(allele)
-                function = allele_info[allele]["annotations"]
-                flags = allele_info[allele][allele_id]["flags"]
-                if allele in gene_names:
-                    allele_name = gene_names[allele]
-                else:
-                    allele_name = allele
-                f.write("{}_{}\t{}\t{}".format(allele_name,allele_id,flags,function))
-                for counter in groups:
-                    group = groups[counter]
-                    if group in final[allele]["allele_id"][allele_id]:
-                        freq = final[allele]["allele_id"][allele_id][group]
-                        f.write("\t{}".format(str(freq)))
-                    else:
-                        freq = 0
-                        f.write("\t{}".format(str(freq)))
-                f.write("\n")
-
-    with open(os.path.join(out_path,"non_functional_alleles_frequencies_{}.tab".format(time.time())),"w") as f:
-        f.write("Allele\tFlags\tFunction")
-        groups = {}
-        i=0
-        for group in frequencies:
-            groups[i] = group
-            f.write("\t{}".format(group))
-            i+=1
-        f.write("\n")
-        for allele in final:
-            if allele not in allele_info:
-                allele = "'{}".format(allele)
-            function = allele_info[allele]["annotations"]
-            if allele in gene_names:
-                allele_name = gene_names[allele]
-            else:
-                allele_name = allele
-            f.write("{}\t{}\t{}".format(allele_name,"Not_Functional",function))
-            for counter in groups:
-                group = groups[counter]
-                if group in final[allele]["non_functional"]:
-                    freq = final[allele]["non_functional"][group]
-                    f.write("\t{}".format(str(freq)))
-                else:
-                    freq = 0
-                    f.write("\t{}".format(str(freq)))
-            f.write("\n")
-
-    with open(os.path.join(out_path,"gene_presence_absence_{}.tab".format(time.time())),"w") as f:
-        f.write("Allele\tFlags\tFunction")
-        groups = {}
-        i=0
-        for group in frequencies:
-            groups[i] = group
-            f.write("\t{}".format(group))
-            i+=1
-        f.write("\n")
-        for allele in final:
-            if allele not in allele_info:
-                allele = "'{}".format(allele)
-            function = allele_info[allele]["annotations"]
-            if allele in gene_names:
-                allele_name = gene_names[allele]
-            else:
-                allele_name = allele
-            f.write("{}\t{}\t{}".format(allele_name,"N/A",function))
-            for counter in groups:
-                group = groups[counter]
-                if allele in frequencies[group]["allele"]:
-                    freq = final[allele]["pres_abs"][group]
-                    f.write("\t{}".format(str(freq)))
-                else:
-                    freq = 0
-                    f.write("\t{}".format(str(freq)))
-            f.write("\n")
-
-
 def generate_sg_predictions(out_file, data, outdir, species):
     ## Neisseria SG Prediction
     sg_results = {"Serogroup":[],"Serotype":[]}
@@ -1749,6 +1620,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # Check if outdir exists
+    fasta_name = os.path.basename(args.fasta)
     prefix = args.prefix if args.prefix else os.path.basename(args.fasta).replace(".fa", "").replace(".fasta","").replace(".fna","")
     outdir = os.path.abspath(os.path.expanduser(args.outdir))
     if os.path.isdir(args.outdir):
@@ -1766,8 +1638,8 @@ if __name__ == "__main__":
         logging.info("Using species: {species}")
     else:
         mash_results = obtain_species(args.fasta, args.threads)
-        species = mash_results[args.fasta]['mash_results']['species']
-        logging.info("Using Mash predicted species: {species}")
+        species = mash_results[fasta_name]['mash_results']['species']
+        logging.info(f"Using Mash predicted species: {species}")
 
     if "Neisseria" in species:
         species = "neisseria"
@@ -1790,7 +1662,7 @@ if __name__ == "__main__":
 
     # Read input FASTA file
     with open(args.fasta, "rt") as fh:
-        logging.debug(f"Reading input FASTA ({args.fasta})")
+        logging.debug(f"Reading input FASTA ({fasta_name})")
         for seq_record in SeqIO.parse(fh,"fasta"):
             seq_id = seq_record.id
             if seq_id not in seq_dict[prefix]["contigs"]:
@@ -1821,9 +1693,6 @@ if __name__ == "__main__":
                         break
             final_dict[query] = {"contigs":final_dict[query], "species":temp_species}
     results_dict.update(final_dict)
-    if replace and (args.blast or args.output_all):
-        with open(raw_blast_results, "wt") as json_fh:
-            json.dump(final_dict, json_fh)
 
     ### Analyze results in results dict ###
     logging.info("Step 2. Parsing BLAST results")
